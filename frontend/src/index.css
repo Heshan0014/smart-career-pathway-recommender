@@ -287,6 +287,13 @@ body {
   background: #ffffff;
 }
 
+.app-loader-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+
 .app-loader-card {
   width: min(92vw, 21rem);
   padding: 1.5rem 1.25rem;
@@ -306,6 +313,13 @@ body {
   gap: 0.65rem;
 }
 
+.app-loader-brand-chip-large {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 1.5rem;
+}
+
 .app-loader-brand-logo {
   width: 2.2rem;
   height: 2.2rem;
@@ -320,12 +334,37 @@ body {
   animation: appLoaderPulse 1.2s ease-in-out infinite;
 }
 
+.app-loader-brand-logo-large {
+  width: 5rem;
+  height: 5rem;
+  border-radius: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 900;
+  font-size: 2.5rem;
+  background: linear-gradient(135deg, #10b981, #0d9488);
+  box-shadow: 0 20px 50px rgba(13, 148, 136, 0.4);
+  animation: appLoaderPulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
 .app-loader-brand-text {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.01em;
   color: #0f172a;
+}
+
+.app-loader-brand-text-large {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #0f172a;
+  white-space: nowrap;
 }
 
 .app-loader-spinner {
@@ -335,6 +374,15 @@ body {
   border: 3px solid rgba(16, 185, 129, 0.2);
   border-top-color: #059669;
   animation: appLoaderSpin 0.75s linear infinite;
+}
+
+.app-loader-spinner-large {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  border: 4px solid rgba(16, 185, 129, 0.15);
+  border-top-color: #10b981;
+  animation: appLoaderSpin 0.8s linear infinite;
 }
 
 .app-loader-text {
