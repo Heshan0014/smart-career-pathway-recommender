@@ -1,0 +1,279 @@
+package com.smartcareer.backend.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.smartcareer.backend.dto.RecommendationOptionResponse;
+import com.smartcareer.backend.dto.RecommendationResponse;
+import com.smartcareer.backend.dto.UserResponse;
+import com.smartcareer.backend.entity.QuizSubmissionEntity;
+import com.smartcareer.backend.entity.UserEntity;
+import com.smartcareer.backend.repository.QuizSubmissionRepository;
+import com.smartcareer.backend.repository.UserRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+@Service
+public class RecommendationService {
+
+    private final AuthService authService;
+    private final QuizSubmissionRepository quizSubmissionRepository;
+    private final UserRepository userRepository;
+    private final ObjectMapper objectMapper;
+
+    public RecommendationService(
+        AuthService authService,
+        QuizSubmissionRepository quizSubmissionRepository,
+        UserRepository userRepository,
+        ObjectMapper objectMapper
+    ) {
+        this.authService = authService;
+        this.quizSubmissionRepository = quizSubmissionRepository;
+        this.userRepository = userRepository;
+        this.objectMapper = objectMapper;
+    }
+
+    public RecommendationResponse getMyRecommendation(String authorizationHeader) {
+        UserResponse me = authService.me(authorizationHeader);
+
+        if (!me.isRecommendationEligible()) {
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Recommendations are locked. Complete profile and quiz requirements first"
+            );
+        }
+
+        UserEntity user = userRepository.findById(me.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        QuizSubmissionEntity submission = quizSubmissionRepository.findByUserId(user.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Quiz not submitted yet"));
+
+        JsonNode answers = parseAnswers(submission.getAnswersJson());
+        Map<String, Integer> scores = initializeScores();
+
+        scoreFromText(scores, extractAnswersText(answers));
+        scoreFromProfile(scores, user);
+
+        List<Map.Entry<String, Integer>> sorted = scores.entrySet().stream()
+            .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()))
+            .toList();
+
+        String primaryPath = sorted.get(0).getKey();
+        int topScore = sorted.get(0).getValue();
+        int secondScore = sorted.size() > 1 ? sorted.get(1).getValue() : 0;
+        int confidence = topScore == 0 ? 0 : Math.max(55, Math.min(95, 60 + (topScore - secondScore) * 8));
+
+        List<String> reasons = buildReasons(primaryPath, user, answers);
+        List<String> nextSteps = buildNextSteps(primaryPath);
+
+        List<RecommendationOptionResponse> alternatives = sorted.stream()
+            .limit(3)
+            .map(entry -> new RecommendationOptionResponse(
+                entry.getKey(),
+                entry.getValue(),
+                toFitLabel(entry.getValue(), topScore)
+            ))
+            .toList();
+
+        String summary = String.format(
+            Locale.ROOT,
+            "Based on your quiz and profile, %s is your strongest fit right now (confidence %d%%).",
+            primaryPath,
+            confidence
+        );
+
+        return new RecommendationResponse(
+            primaryPath,
+            summary,
+            reasons,
+            nextSteps,
+            alternatives,
+            Instant.now()
+        );
+    }
+
+    private JsonNode parseAnswers(String answersJson) {
+        try {
+            return objectMapper.readTree(answersJson);
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Stored quiz data is invalid");
+        }
+    }
+
+    private Map<String, Integer> initializeScores() {
+        Map<String, Integer> scores = new HashMap<>();
+        scores.put("Software Engineering", 0);
+        scores.put("Data Science / AI", 0);
+        scores.put("UI/UX Design", 0);
+        scores.put("Cybersecurity", 0);
+        scores.put("Networking & Cloud", 0);
+        return scores;
+    }
+
+    private List<String> extractAnswersText(JsonNode answers) {
+        List<String> values = new ArrayList<>();
+        if (answers == null || !answers.isObject()) {
+            return values;
+        }
+
+        answers.fields().forEachRemaining(field -> {
+            JsonNode value = field.getValue();
+            if (value == null || !value.isObject()) {
+                return;
+            }
+
+            JsonNode answer = value.get("answer");
+            if (answer != null && answer.isTextual()) {
+                values.add(answer.asText());
+            }
+
+            JsonNode otherChoice = value.get("otherChoice");
+            if (otherChoice != null && otherChoice.isTextual()) {
+                values.add(otherChoice.asText());
+            }
+        });
+
+        return values;
+    }
+
+    private void scoreFromText(Map<String, Integer> scores, List<String> values) {
+        for (String raw : values) {
+            String value = raw.toLowerCase(Locale.ROOT);
+
+            applyKeywordScores(scores, value, "Software Engineering", List.of("software", "program", "coding", "developer", "web", "app"), 2);
+            applyKeywordScores(scores, value, "Data Science / AI", List.of("data", "ai", "machine", "analytics", "analysis"), 2);
+            applyKeywordScores(scores, value, "UI/UX Design", List.of("design", "ui", "ux", "creative"), 2);
+            applyKeywordScores(scores, value, "Cybersecurity", List.of("cyber", "security", "hacking", "vulnerab"), 2);
+            applyKeywordScores(scores, value, "Networking & Cloud", List.of("network", "server", "cloud", "infrastructure"), 2);
+
+            if (value.contains("logical") || value.contains("problem")) {
+                addScore(scores, "Software Engineering", 1);
+                addScore(scores, "Data Science / AI", 1);
+            }
+            if (value.contains("analytical")) {
+                addScore(scores, "Data Science / AI", 2);
+                addScore(scores, "Cybersecurity", 1);
+            }
+            if (value.contains("creative")) {
+                addScore(scores, "UI/UX Design", 2);
+            }
+        }
+    }
+
+    private void scoreFromProfile(Map<String, Integer> scores, UserEntity user) {
+        scoreProfileField(scores, user.getFavoriteField(), 3);
+        scoreProfileField(scores, user.getFavoriteSubject(), 2);
+        scoreProfileField(scores, user.getEducationLevel(), 1);
+
+        if (user.getInterests() != null) {
+            user.getInterests().forEach(interest -> scoreProfileField(scores, interest, 1));
+        }
+        if (user.getTalents() != null) {
+            user.getTalents().forEach(talent -> scoreProfileField(scores, talent, 1));
+        }
+    }
+
+    private void scoreProfileField(Map<String, Integer> scores, String value, int weight) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+
+        String normalized = value.toLowerCase(Locale.ROOT);
+        applyKeywordScores(scores, normalized, "Software Engineering", List.of("software", "program", "web", "app"), weight);
+        applyKeywordScores(scores, normalized, "Data Science / AI", List.of("data", "ai", "machine"), weight);
+        applyKeywordScores(scores, normalized, "UI/UX Design", List.of("design", "ui", "ux"), weight);
+        applyKeywordScores(scores, normalized, "Cybersecurity", List.of("cyber", "security"), weight);
+        applyKeywordScores(scores, normalized, "Networking & Cloud", List.of("network", "cloud", "server"), weight);
+    }
+
+    private void applyKeywordScores(
+        Map<String, Integer> scores,
+        String input,
+        String career,
+        List<String> keywords,
+        int weight
+    ) {
+        for (String keyword : keywords) {
+            if (input.contains(keyword)) {
+                addScore(scores, career, weight);
+                return;
+            }
+        }
+    }
+
+    private void addScore(Map<String, Integer> scores, String career, int amount) {
+        scores.put(career, scores.getOrDefault(career, 0) + amount);
+    }
+
+    private List<String> buildReasons(String primaryPath, UserEntity user, JsonNode answers) {
+        List<String> reasons = new ArrayList<>();
+        reasons.add("Your quiz responses align most strongly with " + primaryPath + ".");
+
+        if (user.getFavoriteField() != null && !user.getFavoriteField().isBlank()) {
+            reasons.add("Your preferred field (" + user.getFavoriteField() + ") supports this pathway.");
+        }
+
+        if (answers != null && answers.isObject() && answers.size() >= 10) {
+            reasons.add("You completed a broad quiz response set, increasing recommendation reliability.");
+        } else {
+            reasons.add("Complete all quiz questions over time to improve recommendation precision.");
+        }
+
+        return reasons;
+    }
+
+    private List<String> buildNextSteps(String primaryPath) {
+        return switch (primaryPath) {
+            case "Software Engineering" -> List.of(
+                "Build one full-stack mini project and publish it on GitHub.",
+                "Practice data structures and problem solving at least 3 times per week.",
+                "Learn one backend framework and one frontend framework deeply."
+            );
+            case "Data Science / AI" -> List.of(
+                "Complete one end-to-end data analysis project with visualization.",
+                "Strengthen Python and statistics fundamentals.",
+                "Train and evaluate at least one ML model on a public dataset."
+            );
+            case "UI/UX Design" -> List.of(
+                "Create a portfolio with 2-3 case studies.",
+                "Practice user flow, wireframe, and high-fidelity prototype creation.",
+                "Run simple usability tests and iterate based on feedback."
+            );
+            case "Cybersecurity" -> List.of(
+                "Study security fundamentals: OWASP Top 10 and secure coding basics.",
+                "Practice in legal labs and CTF-style environments.",
+                "Learn basic network security monitoring and incident response concepts."
+            );
+            default -> List.of(
+                "Build practical labs around networking and cloud fundamentals.",
+                "Practice configuring servers, routing, and cloud services.",
+                "Document one deployment architecture as a portfolio artifact."
+            );
+        };
+    }
+
+    private String toFitLabel(int score, int topScore) {
+        if (topScore == 0) {
+            return "Low";
+        }
+
+        double ratio = score / (double) topScore;
+        if (ratio >= 0.9) {
+            return "Strong";
+        }
+        if (ratio >= 0.65) {
+            return "Moderate";
+        }
+        return "Emerging";
+    }
+}

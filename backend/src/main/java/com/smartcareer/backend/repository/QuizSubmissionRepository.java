@@ -1,0 +1,10 @@
+package com.smartcareer.backend.repository;
+
+import com.smartcareer.backend.entity.QuizSubmissionEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface QuizSubmissionRepository extends JpaRepository<QuizSubmissionEntity, Long> {
+    Optional<QuizSubmissionEntity> findByUserId(Long userId);
+}
