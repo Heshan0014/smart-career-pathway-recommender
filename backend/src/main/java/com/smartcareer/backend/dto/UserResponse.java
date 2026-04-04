@@ -53,11 +53,18 @@ public class UserResponse {
     @JsonProperty("recommendation_required_completion_percentage")
     private int recommendationRequiredCompletionPercentage;
 
+    @JsonProperty("message_blocked")
+    private boolean messageBlocked;
+
+    @JsonProperty("message_blocked_reason")
+    private String messageBlockedReason;
+
     public UserResponse(Long id, String fullName, String email, UserRole userRole, String gender, String age, String address,
                         String phoneNumber, String favoriteSubject, String favoriteField, String profileImage,
                         String educationLevel, List<String> talents, List<String> habits, List<String> interests,
                         int profileCompletionPercentage, List<String> completedFields, List<String> missingFields,
-                        boolean quizSubmitted, boolean recommendationEligible, int recommendationRequiredCompletionPercentage) {
+                        boolean quizSubmitted, boolean recommendationEligible, int recommendationRequiredCompletionPercentage,
+                        boolean messageBlocked, String messageBlockedReason) {
         this.id = id;
         this.fullName = fullName;
         this.email = email;
@@ -79,6 +86,8 @@ public class UserResponse {
         this.quizSubmitted = quizSubmitted;
         this.recommendationEligible = recommendationEligible;
         this.recommendationRequiredCompletionPercentage = recommendationRequiredCompletionPercentage;
+        this.messageBlocked = messageBlocked;
+        this.messageBlockedReason = messageBlockedReason;
     }
 
     public Long getId() {
@@ -163,5 +172,13 @@ public class UserResponse {
 
     public int getRecommendationRequiredCompletionPercentage() {
         return recommendationRequiredCompletionPercentage;
+    }
+
+    public boolean isMessageBlocked() {
+        return messageBlocked;
+    }
+
+    public String getMessageBlockedReason() {
+        return messageBlockedReason;
     }
 }

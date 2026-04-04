@@ -1,6 +1,7 @@
 package com.smartcareer.backend.controller;
 
 import com.smartcareer.backend.config.JwtUtil;
+import com.smartcareer.backend.dto.AdminBlockUserRequest;
 import com.smartcareer.backend.dto.AdminReplyRequest;
 import com.smartcareer.backend.dto.MessageResponse;
 import com.smartcareer.backend.dto.SendMessageRequest;
@@ -49,6 +50,8 @@ public class MessageController {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (ResponseStatusException e) {
             return ResponseEntity.status(e.getStatusCode()).body("{ \"error\": \"" + e.getReason() + "\" }");
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("{ \"error\": \"" + e.getMessage() + "\" }");
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("{ \"error\": \"" + e.getMessage() + "\" }");
@@ -177,30 +180,6 @@ public class MessageController {
     }
 
     /**
-     * Admin marks message as read
-     * Endpoint: PUT /api/v1/messages/{messageId}/mark-read
-     */
-    @PutMapping("/{messageId}/mark-read")
-    public ResponseEntity<?> markAsRead(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long messageId) {
-        try {
-            UserEntity admin = getAuthenticatedUser(authHeader);
-            if (admin.getUserRole() != UserRole.ADMIN) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admin can access messages");
-            }
-
-            MessageResponse response = messageService.markAsRead(messageId);
-            return ResponseEntity.ok(response);
-        } catch (ResponseStatusException e) {
-            return ResponseEntity.status(e.getStatusCode()).body("{ \"error\": \"" + e.getReason() + "\" }");
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("{ \"error\": \"" + e.getMessage() + "\" }");
-        }
-    }
-
-    /**
      * Admin replies to a message
      * Endpoint: POST /api/v1/messages/{messageId}/reply
      */
@@ -226,11 +205,62 @@ public class MessageController {
     }
 
     /**
-     * Admin deletes a message
-     * Endpoint: DELETE /api/v1/messages/{messageId}
+     * Admin blocks a student from sending messages
+     * Endpoint: POST /api/v1/messages/{messageId}/block-user
      */
-    @DeleteMapping("/{messageId}")
-    public ResponseEntity<?> deleteMessage(
+    @PostMapping("/{messageId}/block-user")
+    public ResponseEntity<?> blockUser(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long messageId,
+            @RequestBody(required = false) AdminBlockUserRequest request) {
+        try {
+            UserEntity admin = getAuthenticatedUser(authHeader);
+            if (admin.getUserRole() != UserRole.ADMIN) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admin can access messages");
+            }
+
+            MessageResponse response = messageService.blockUserFromMessage(messageId, request);
+            return ResponseEntity.ok(response);
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body("{ \"error\": \"" + e.getReason() + "\" }");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("{ \"error\": \"" + e.getMessage() + "\" }");
+        }
+    }
+
+    /**
+     * Admin blocks a student directly by student id
+     * Endpoint: POST /api/v1/messages/admin/students/{studentId}/block-user
+     */
+    @PostMapping("/admin/students/{studentId}/block-user")
+    public ResponseEntity<?> blockUserByStudentId(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long studentId,
+            @RequestBody(required = false) AdminBlockUserRequest request) {
+        try {
+            UserEntity admin = getAuthenticatedUser(authHeader);
+            if (admin.getUserRole() != UserRole.ADMIN) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admin can access messages");
+            }
+
+            String reason = request == null ? null : request.getReason();
+            messageService.blockUserByStudentId(studentId, reason);
+            return ResponseEntity.ok("{ \"message\": \"User blocked\" }");
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body("{ \"error\": \"" + e.getReason() + "\" }");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("{ \"error\": \"" + e.getMessage() + "\" }");
+        }
+    }
+
+    /**
+     * Admin unblocks a student from sending messages
+     * Endpoint: POST /api/v1/messages/{messageId}/unblock-user
+     */
+    @PostMapping("/{messageId}/unblock-user")
+    public ResponseEntity<?> unblockUser(
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Long messageId) {
         try {
@@ -239,8 +269,32 @@ public class MessageController {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admin can access messages");
             }
 
-            messageService.deleteMessage(messageId);
-            return ResponseEntity.ok("{ \"message\": \"Message deleted successfully\" }");
+            MessageResponse response = messageService.unblockUserFromMessage(messageId);
+            return ResponseEntity.ok(response);
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body("{ \"error\": \"" + e.getReason() + "\" }");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("{ \"error\": \"" + e.getMessage() + "\" }");
+        }
+    }
+
+    /**
+     * Admin unblocks a student directly by student id
+     * Endpoint: POST /api/v1/messages/admin/students/{studentId}/unblock-user
+     */
+    @PostMapping("/admin/students/{studentId}/unblock-user")
+    public ResponseEntity<?> unblockUserByStudentId(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long studentId) {
+        try {
+            UserEntity admin = getAuthenticatedUser(authHeader);
+            if (admin.getUserRole() != UserRole.ADMIN) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admin can access messages");
+            }
+
+            messageService.unblockUserByStudentId(studentId);
+            return ResponseEntity.ok("{ \"message\": \"User unblocked\" }");
         } catch (ResponseStatusException e) {
             return ResponseEntity.status(e.getStatusCode()).body("{ \"error\": \"" + e.getReason() + "\" }");
         } catch (Exception e) {

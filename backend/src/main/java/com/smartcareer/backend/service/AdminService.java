@@ -282,7 +282,6 @@ public class AdminService {
         checks.put("address", user.getAddress());
         checks.put("phoneNumber", user.getPhoneNumber());
         checks.put("favoriteSubject", user.getFavoriteSubject());
-        checks.put("favoriteField", user.getFavoriteField());
         checks.put("profileImage", user.getProfileImage());
 
         long completed = checks.values().stream()

@@ -59,6 +59,15 @@ public class UserEntity {
     @Column(name = "education_level")
     private String educationLevel;
 
+    @Column(name = "message_blocked")
+    private Boolean messageBlocked = false;
+
+    @Column(name = "message_blocked_reason", columnDefinition = "TEXT")
+    private String messageBlockedReason;
+
+    @Column(name = "message_blocked_at")
+    private Instant messageBlockedAt;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "user_talents", joinColumns = @JoinColumn(name = "user_id"))
     @Column(name = "talent")
@@ -140,6 +149,30 @@ public class UserEntity {
 
     public void setEducationLevel(String educationLevel) {
         this.educationLevel = educationLevel;
+    }
+
+    public boolean isMessageBlocked() {
+        return Boolean.TRUE.equals(messageBlocked);
+    }
+
+    public void setMessageBlocked(boolean messageBlocked) {
+        this.messageBlocked = messageBlocked;
+    }
+
+    public String getMessageBlockedReason() {
+        return messageBlockedReason;
+    }
+
+    public void setMessageBlockedReason(String messageBlockedReason) {
+        this.messageBlockedReason = messageBlockedReason;
+    }
+
+    public Instant getMessageBlockedAt() {
+        return messageBlockedAt;
+    }
+
+    public void setMessageBlockedAt(Instant messageBlockedAt) {
+        this.messageBlockedAt = messageBlockedAt;
     }
 
     public String getAddress() {

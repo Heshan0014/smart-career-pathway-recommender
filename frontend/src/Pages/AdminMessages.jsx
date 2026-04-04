@@ -16,7 +16,9 @@ export default function AdminMessages() {
   const [replyModal, setReplyModal] = useState({ open: false, messageId: null });
   const [replyText, setReplyText] = useState("");
   const [replying, setReplying] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState({ open: false, message: null });
+  const [blocking, setBlocking] = useState(false);
+  const [blockConfirm, setBlockConfirm] = useState({ open: false, message: null });
+  const [blockError, setBlockError] = useState("");
 
   const showToast = useCallback((message, type = "info") => {
     setToast({ visible: true, message, type });
@@ -85,65 +87,84 @@ export default function AdminMessages() {
     loadUnreadCount(authToken);
   }, [navigate, loadMessages, loadUnreadCount]);
 
-  const handleMarkAsRead = async (messageId) => {
-    try {
-      const response = await fetch(
-        `http://localhost:8001/api/v1/messages/${messageId}/mark-read`,
-        {
-          method: "PUT",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        // Update the message in the list
-        setMessages(
-          messages.map((m) =>
-            m.id === messageId ? { ...m, isRead: true } : m
-          )
-        );
-        loadUnreadCount(token);
-        showToast("Message marked as read", "success");
-      } else {
-        showToast("Failed to mark as read", "error");
-      }
-    } catch (err) {
-      showToast("Error: " + err.message, "error");
-    }
-  };
-
-  const handleDeleteMessage = async (messageId) => {
-    try {
-      const response = await fetch(
-        `http://localhost:8001/api/v1/messages/${messageId}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        setMessages(messages.filter((m) => m.id !== messageId));
-        setSelectedMessage(null);
-        setDeleteConfirm({ open: false, message: null });
-        showToast("Message deleted", "success");
-      } else {
-        showToast("Failed to delete message", "error");
-      }
-    } catch (err) {
-      showToast("Error: " + err.message, "error");
-    }
-  };
-
   const handleOpenReplyModal = async (messageId) => {
     setReplyModal({ open: true, messageId });
     setReplyText("");
-    // Mark as read when opening reply modal
-    await handleMarkAsRead(messageId);
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, isRead: true } : m)));
+    loadUnreadCount(token);
+  };
+
+  const handleBlockUser = async (message) => {
+    if (!message) return;
+
+    setBlockError("");
+    setBlocking(true);
+    try {
+      const response = await fetch(
+        `http://localhost:8001/api/v1/messages/admin/students/${message.studentId}/block-user`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            reason: "Admin blocked you for repeated message activity. If you want to contact admin, send mail to adminnextstepai@gmail.com.",
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const updatedMessage = await response.json();
+        const blockedStudentId = updatedMessage.studentId || message.studentId;
+        setMessages((prev) => prev.map((item) => (
+          item.studentId === blockedStudentId ? { ...item, studentBlocked: true } : item
+        )));
+        setSelectedMessage((prev) => (prev && prev.studentId === blockedStudentId ? { ...prev, studentBlocked: true } : prev));
+        showToast("Student blocked successfully", "success");
+      } else {
+        setBlockError("Failed to block student");
+        showToast("Failed to block student", "error");
+      }
+    } catch (err) {
+      setBlockError("Failed to block student");
+      showToast("Error: " + err.message, "error");
+    } finally {
+      setBlocking(false);
+    }
+  };
+
+  const handleUnblockUser = async (message) => {
+    if (!message) return;
+
+    setBlocking(true);
+    try {
+      const response = await fetch(
+        `http://localhost:8001/api/v1/messages/admin/students/${message.studentId}/unblock-user`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const updatedMessage = await response.json();
+        const unblockedStudentId = updatedMessage.studentId || message.studentId;
+        setMessages((prev) => prev.map((item) => (
+          item.studentId === unblockedStudentId ? { ...item, studentBlocked: false } : item
+        )));
+        setSelectedMessage((prev) => (prev && prev.studentId === unblockedStudentId ? { ...prev, studentBlocked: false } : prev));
+        showToast("Student unblocked successfully", "success");
+      } else {
+        showToast("Failed to unblock student", "error");
+      }
+    } catch (err) {
+      showToast("Error: " + err.message, "error");
+    } finally {
+      setBlocking(false);
+    }
   };
 
   const handleSendReply = async () => {
@@ -278,19 +299,31 @@ export default function AdminMessages() {
                       >
                         Reply
                       </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteConfirm({ open: true, message });
-                        }}
-                        className="px-3 py-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition flex items-center gap-1"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166M18.16 5.789l-.114 1.508m-13.252 0c.34-.059.68-.114 1.022-.166m0 0l.114 1.508m0 0A48.39 48.39 0 0112 7.5c2.33 0 4.59.23 6.744.664M4.908 5.789a48.39 48.39 0 00-1.022.166m1.022-.166L5.02 7.297m0 0A48.37 48.37 0 0112 7.5c2.33 0 4.59.23 6.744.664m0 0l.114-1.508M9.26 9v9m5.48 0V9m-7.5-4.5h9A2.25 2.25 0 0119.5 6v.75m-15 0V6A2.25 2.25 0 016.75 3.75h10.5A2.25 2.25 0 0119.5 6v.75" />
-                        </svg>
-                        Delete
-                      </button>
+                      {message.studentBlocked ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUnblockUser(message);
+                          }}
+                          disabled={blocking}
+                          className="px-3 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 transition flex items-center gap-1 disabled:opacity-50"
+                        >
+                          Unblock User
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBlockConfirm({ open: true, message });
+                          }}
+                          disabled={blocking}
+                          className="px-3 py-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition flex items-center gap-1 disabled:opacity-50"
+                        >
+                          Block User
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -362,6 +395,11 @@ export default function AdminMessages() {
                   <h3 className="font-semibold text-slate-900 mb-2">From Student</h3>
                   <p className="text-slate-700">{selectedMessage.studentName}</p>
                   <p className="text-sm text-slate-600">{selectedMessage.studentEmail}</p>
+                  {selectedMessage.studentBlocked && (
+                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                      This student is blocked from sending messages.
+                    </div>
+                  )}
                 </div>
 
                 {/* Original Message */}
@@ -432,6 +470,25 @@ export default function AdminMessages() {
                       )}
                     </button>
                   )}
+                  {selectedMessage.studentBlocked ? (
+                    <button
+                      type="button"
+                      onClick={() => handleUnblockUser(selectedMessage)}
+                      disabled={blocking}
+                      className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {blocking ? "Unblocking..." : "Unblock User"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setBlockConfirm({ open: true, message: selectedMessage })}
+                      disabled={blocking}
+                      className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {blocking ? "Blocking..." : "Block User"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -439,37 +496,45 @@ export default function AdminMessages() {
         </>
       )}
 
-      {deleteConfirm.open && deleteConfirm.message && (
+      {blockConfirm.open && blockConfirm.message && !blockConfirm.message.studentBlocked && (
         <>
-          <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
-            onClick={() => setDeleteConfirm({ open: false, message: null })}
-          ></div>
-          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[60] w-full max-w-md px-4">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6">
-              <h3 className="text-lg font-bold text-slate-900">Confirm Delete</h3>
-              <p className="text-sm text-slate-600 mt-2">Are you sure want to delete message?</p>
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Student</p>
-                <p className="text-sm font-semibold text-slate-900 mt-1">{deleteConfirm.message.studentName}</p>
-                <p className="text-xs text-slate-500">{deleteConfirm.message.studentEmail}</p>
-                <p className="text-sm text-slate-700 mt-3 line-clamp-3">{deleteConfirm.message.studentMessage}</p>
+          <div className="fixed inset-0 z-[70] bg-red-950/40 backdrop-blur-md" onClick={() => setBlockConfirm({ open: false, message: null })}></div>
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white shadow-2xl overflow-hidden">
+              <div className="bg-red-600 px-5 py-4 text-white">
+                <h3 className="text-lg font-bold">Are you sure you want to block this user?</h3>
+                <p className="text-sm text-red-50 mt-1">This will stop the student from sending new messages.</p>
               </div>
-              <div className="mt-5 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirm({ open: false, message: null })}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteMessage(deleteConfirm.message.id)}
-                  className="px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 transition"
-                >
-                  Delete
-                </button>
+              <div className="p-5">
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                  <p className="font-semibold">Blocked user notice</p>
+                  <p className="mt-2">Admin blocked you for repeated message activity. If you want to contact admin, send mail to adminnextstepai@gmail.com.</p>
+                </div>
+                {blockError && (
+                  <div className="mt-4 rounded-xl border border-red-200 bg-red-100 px-4 py-3 text-sm font-semibold text-red-700">
+                    {blockError}
+                  </div>
+                )}
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBlockConfirm({ open: false, message: null })}
+                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const message = blockConfirm.message;
+                      setBlockConfirm({ open: false, message: null });
+                      await handleBlockUser(message);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 transition"
+                  >
+                    Block User
+                  </button>
+                </div>
               </div>
             </div>
           </div>

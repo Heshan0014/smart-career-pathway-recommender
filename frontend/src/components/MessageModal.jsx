@@ -12,6 +12,8 @@ export default function MessageModal({ isOpen, onClose, user }) {
   const [activeTab, setActiveTab] = useState("inbox");
   const [messages, setMessages] = useState([]);
   const [messagesLoaded, setMessagesLoaded] = useState(false);
+  const isMessageBlocked = Boolean(user?.message_blocked || user?.messageBlocked);
+  const blockedReason = user?.message_blocked_reason || user?.messageBlockedReason || "Admin blocked you for repeated message activity.";
 
   useEffect(() => {
     const authToken = localStorage.getItem("token");
@@ -97,6 +99,11 @@ export default function MessageModal({ isOpen, onClose, user }) {
 
     if (!token) {
       setError("Please login to system to send message");
+      return;
+    }
+
+    if (isMessageBlocked) {
+      setError(`${blockedReason} If you want to contact admin, send mail to adminnextstepai@gmail.com.`);
       return;
     }
 
@@ -259,6 +266,14 @@ export default function MessageModal({ isOpen, onClose, user }) {
               </div>
             ) : (
               <form onSubmit={handleSendMessage} className="space-y-4">
+                {isMessageBlocked && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    <p className="font-semibold">Admin blocked you!</p>
+                    <p className="mt-1">{blockedReason}</p>
+      
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     Your Message
@@ -269,7 +284,7 @@ export default function MessageModal({ isOpen, onClose, user }) {
                     placeholder="Type your message here..."
                     rows={6}
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none"
-                    disabled={loading}
+                    disabled={loading || isMessageBlocked}
                   />
                 </div>
 
@@ -285,7 +300,7 @@ export default function MessageModal({ isOpen, onClose, user }) {
                   <button
                     type="submit"
                     className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    disabled={loading}
+                    disabled={loading || isMessageBlocked}
                   >
                     {loading ? (
                       <>

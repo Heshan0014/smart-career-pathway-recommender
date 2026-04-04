@@ -312,24 +312,6 @@ export default function StudentDashboard() {
               </div>
 
               <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4">
-
-      {/* Chatbot Icon - Fixed Position */}
-      <button
-        type="button"
-        onClick={() => setIsMessageModalOpen(true)}
-        className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-br from-orange-600 to-orange-500 rounded-full shadow-lg hover:shadow-xl hover:scale-110 transition-all flex items-center justify-center text-white z-40"
-        title="Chat with admin"
-      >
-        <img src="/Images/message.png" alt="Chat" className="w-7 h-7 object-contain" />
-        {studentUnreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
-            {studentUnreadCount > 9 ? "9+" : studentUnreadCount}
-          </span>
-        )}
-      </button>
-
-      {/* Message Modal */}
-      <MessageModal isOpen={isMessageModalOpen} onClose={() => setIsMessageModalOpen(false)} user={profile} />
                 <p className="text-sm font-semibold text-sky-800">Next steps</p>
                 <ol className="mt-2 space-y-1 text-sm text-sky-700 list-decimal list-inside">
                   {(recommendation.next_steps || []).map((step, index) => (

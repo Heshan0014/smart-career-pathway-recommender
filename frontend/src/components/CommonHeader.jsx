@@ -79,19 +79,19 @@ export default function CommonHeader({ user = null }) {
             <h1 className="text-lg md:text-xl font-semibold text-slate-900 tracking-tight">NextStep IT</h1>
           </div>
 
-          <div className="hidden md:flex flex-1 justify-center">
-            <nav className="flex gap-7 text-sm text-slate-600 font-medium justify-center">
-              <Link to={{ pathname: "/", hash: "#home" }} className="hover:text-emerald-600 transition">Home</Link>
-              {!isAdmin && <Link to={{ pathname: "/", hash: "#features" }} className="hover:text-emerald-600 transition">Features</Link>}
-              {!isAdmin && <Link to={{ pathname: "/", hash: "#how" }} className="hover:text-emerald-600 transition">How It Works</Link>}
-              {!isAdmin && <Link to={{ pathname: "/", hash: "#stories" }} className="hover:text-emerald-600 transition">Success Stories</Link>}
-              {isAdmin && <Link to="/admin/dashboard" className="hover:text-emerald-600 transition">Admin Dashboard</Link>}
-              {isAdmin && <Link to="/admin/profile" className="hover:text-emerald-600 transition">Admin Profile</Link>}
-            </nav>
-          </div>
+          {!isAdmin && (
+            <div className="hidden md:flex flex-1 justify-center">
+              <nav className="flex gap-7 text-sm text-slate-600 font-medium justify-center">
+                <Link to={{ pathname: "/", hash: "#home" }} className="hover:text-emerald-600 transition">Home</Link>
+                <Link to={{ pathname: "/", hash: "#features" }} className="hover:text-emerald-600 transition">Features</Link>
+                <Link to={{ pathname: "/", hash: "#how" }} className="hover:text-emerald-600 transition">How It Works</Link>
+                <Link to={{ pathname: "/", hash: "#stories" }} className="hover:text-emerald-600 transition">Success Stories</Link>
+              </nav>
+            </div>
+          )}
 
           {activeUser ? (
-            <div className="flex gap-2 items-center">
+            <div className="ml-auto flex gap-2 items-center justify-end">
               {isStudent && (
                 <button
                   type="button"
@@ -118,7 +118,7 @@ export default function CommonHeader({ user = null }) {
                 </button>
               )}
 
-              <div className="hidden sm:flex flex-col items-end">
+              <div className="hidden sm:flex flex-col items-end text-right">
                 <span className="text-sm text-slate-700">Hi, {activeUser.full_name || "User"}</span>
                 {isAdmin && <span className="text-xs text-sky-600 font-semibold">Admin</span>}
               </div>

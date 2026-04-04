@@ -225,7 +225,9 @@ public class AuthService {
             completionSnapshot.missingFields(),
             quizSubmitted,
             recommendationEligible,
-            RECOMMENDATION_REQUIRED_COMPLETION_PERCENTAGE
+            RECOMMENDATION_REQUIRED_COMPLETION_PERCENTAGE,
+            user.isMessageBlocked(),
+            user.getMessageBlockedReason()
         );
     }
 
@@ -241,7 +243,6 @@ public class AuthService {
         trackStringField("Address", user.getAddress(), completedFields, missingFields);
         trackStringField("Phone Number", user.getPhoneNumber(), completedFields, missingFields);
         trackStringField("Favorite Subject", user.getFavoriteSubject(), completedFields, missingFields);
-        trackStringField("Favorite Field", user.getFavoriteField(), completedFields, missingFields);
         trackStringField("Profile Image", user.getProfileImage(), completedFields, missingFields);
 
         int totalFields = completedFields.size() + missingFields.size();

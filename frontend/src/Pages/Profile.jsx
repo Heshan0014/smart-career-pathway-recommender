@@ -11,29 +11,69 @@ const QUIZ_QUESTIONS = [
     id: "q1",
     category: "Interests",
     label: "1. Which subjects do you enjoy the most?",
-    options: ["IT / Programming", "Project Management", "Business Analysis", "Design", "Other"],
-    otherOptions: ["Software Development", "Data Science / AI", "UI/UX Design", "Cybersecurity", "Networking"],
+    multiSelect: true,
+    options: [
+      "IT / Programming",
+      "Project Management",
+      "Business Analysis",
+      "Design",
+      "Software Development",
+      "Data Science / AI",
+      "UI/UX Design",
+      "Cybersecurity",
+      "Networking",
+    ],
   },
   {
     id: "q2",
     category: "Interests",
     label: "2. What do you like doing in your free time?",
-    options: ["Coding / Building apps", "Designing / Drawing", "Watching educational content", "Playing games / entertainment", "Other"],
-    otherOptions: ["Coding applications", "Analyzing data", "Designing interfaces", "Securing systems", "Managing networks"],
+    multiSelect: true,
+    options: [
+      "Coding / Building apps",
+      "Designing / Drawing",
+      "Watching educational content",
+      "Playing games / entertainment",
+      "Coding applications",
+      "Analyzing data",
+      "Designing interfaces",
+      "Securing systems",
+      "Managing networks",
+    ],
   },
   {
     id: "q3",
     category: "Interests",
     label: "3. Which activity sounds most interesting to you?",
-    options: ["Solving logical problems", "Creating visual designs", "Managing people or projects", "Researching new topics", "Other"],
-    otherOptions: ["Building websites or apps", "Creating machine learning models", "Designing user interfaces", "Finding security vulnerabilities", "Setting up servers/networks"],
+    multiSelect: true,
+    options: [
+      "Solving logical problems",
+      "Creating visual designs",
+      "Managing people or projects",
+      "Researching new topics",
+      "Building websites or apps",
+      "Creating machine learning models",
+      "Designing user interfaces",
+      "Finding security vulnerabilities",
+      "Setting up servers/networks",
+    ],
   },
   {
     id: "q4",
     category: "Interests",
     label: "4. Which field attracts you the most?",
-    options: ["Software Development", "Data Science", "UI/UX Design", "Cybersecurity", "Other"],
-    otherOptions: ["Web/mobile apps", "AI/ML projects", "Design prototypes", "Ethical hacking projects", "Network systems"],
+    multiSelect: true,
+    options: [
+      "Software Development",
+      "Data Science",
+      "UI/UX Design",
+      "Cybersecurity",
+      "Web/mobile apps",
+      "AI/ML projects",
+      "Design prototypes",
+      "Ethical hacking projects",
+      "Network systems",
+    ],
   },
   {
     id: "q5",
@@ -112,12 +152,6 @@ const QUIZ_QUESTIONS = [
     category: "Career Preferences",
     label: "17. Are you interested in leadership roles?",
     options: ["Yes", "No", "Maybe"],
-  },
-  {
-    id: "q18",
-    category: "Education & Background",
-    label: "18. What is your current education level?",
-    options: ["School (A/L)", "High school", "Undergraduate", "Graduate", "Bachelor's degree", "Master's degree", "Doctorate", "Other"],
   },
 ];
 
@@ -237,7 +271,6 @@ function getCompletionData(profile, formData) {
     ["Address", Boolean(formData?.address?.trim())],
     ["Phone Number", Boolean(formData?.phone_number?.trim())],
     ["Favorite Subject", Boolean(formData?.favorite_subject?.trim())],
-    ["Favorite Field", Boolean(formData?.favorite_field?.trim())],
     ["Profile Image", Boolean(formData?.profile_image?.trim())],
   ];
 
@@ -302,10 +335,14 @@ function buildFallbackRecommendation(profile, answers) {
   };
 
   Object.values(answers || {}).forEach((entry) => {
-    const answerText = entry?.answer || "";
+    const answerValues = Array.isArray(entry?.answers)
+      ? entry.answers
+      : entry?.answer
+        ? [entry.answer]
+        : [];
     const otherText = entry?.otherChoice || "";
 
-    [answerText, otherText].forEach((text) => {
+    [...answerValues, otherText].forEach((text) => {
       addByKeywords(text, "Software Engineering", ["software", "program", "coding", "developer", "web", "app"], 2);
       addByKeywords(text, "Data Science / AI", ["data", "ai", "machine", "analytics", "analysis"], 2);
       addByKeywords(text, "UI/UX Design", ["design", "ui", "ux", "creative"], 2);
@@ -626,7 +663,24 @@ export default function Profile() {
   };
 
   const handleQuizAnswerChange = (questionId, answer) => {
+    const question = QUIZ_QUESTIONS.find((item) => item.id === questionId);
+
     setQuizAnswers((prev) => {
+      if (question?.multiSelect) {
+        const current = Array.isArray(prev[questionId]?.answers) ? prev[questionId].answers : [];
+        const nextAnswers = current.includes(answer)
+          ? current.filter((item) => item !== answer)
+          : [...current, answer];
+
+        const next = { ...prev };
+        if (nextAnswers.length > 0) {
+          next[questionId] = { answers: nextAnswers };
+        } else {
+          delete next[questionId];
+        }
+        return next;
+      }
+
       const current = prev[questionId] || {};
       const next = { ...prev, [questionId]: { ...current, answer } };
       if (answer !== "Other") {
@@ -659,13 +713,15 @@ export default function Profile() {
 
     QUIZ_QUESTIONS.forEach((question) => {
       const entry = quizAnswers[question.id];
-      if (!entry || !entry.answer) {
-        nextErrors[question.id] = "Please select an answer.";
+      if (question.multiSelect) {
+        if (!entry || !Array.isArray(entry.answers) || entry.answers.length === 0) {
+          nextErrors[question.id] = "Please select at least one option.";
+        }
         return;
       }
 
-      if (entry.answer === "Other" && question.otherOptions && !entry.otherChoice) {
-        nextErrors[`${question.id}_other`] = "Please select one option for Other.";
+      if (!entry || !entry.answer) {
+        nextErrors[question.id] = "Please select an answer.";
       }
     });
 
@@ -799,13 +855,13 @@ export default function Profile() {
 
   const getQuizAnswerDisplay = (question) => {
     const answer = quizAnswers[question.id];
-    if (!answer || !answer.answer) {
+    if (!answer) {
       return "Not answered";
     }
-    if (answer.answer === "Other" && answer.otherChoice) {
-      return `Other: ${answer.otherChoice}`;
+    if (question.multiSelect) {
+      return Array.isArray(answer.answers) && answer.answers.length > 0 ? answer.answers.join(", ") : "Not answered";
     }
-    return answer.answer;
+    return answer.answer || "Not answered";
   };
 
   if (loading) {
@@ -1054,8 +1110,6 @@ export default function Profile() {
                   <option value="">Select gender</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
-                  <option value="Non-binary">Non-binary</option>
-                  <option value="Prefer not to say">Prefer not to say</option>
                 </select>
               </div>
 
@@ -1069,10 +1123,8 @@ export default function Profile() {
                 >
                   <option value="">Select education level</option>
                   <option value="High school">High school</option>
-                  <option value="Associate degree">Associate degree</option>
+                  <option value="Diploma">Diploma</option>
                   <option value="Bachelor's degree">Bachelor's degree</option>
-                  <option value="Master's degree">Master's degree</option>
-                  <option value="Doctorate">Doctorate</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
@@ -1110,27 +1162,22 @@ export default function Profile() {
           <section className="glass-panel p-6 rounded-2xl space-y-4">
             <h3 className="modern-section-title border-l-4 border-green-600 pl-3">Skills and Preferences</h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Favourite Subject</label>
-                <input
+                <label className="block text-sm text-gray-600 mb-1">Categories</label>
+                <select
                   className="w-full modern-input"
                   value={formData?.favorite_subject || ""}
                   disabled={!isEditMode}
-                  placeholder="Enter favourite subject"
                   onChange={(e) => updateField({ ...formData, favorite_subject: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Field</label>
-                <input
-                  className="w-full modern-input"
-                  value={formData?.favorite_field || ""}
-                  disabled={!isEditMode}
-                  placeholder="Enter field"
-                  onChange={(e) => updateField({ ...formData, favorite_field: e.target.value })}
-                />
+                >
+                  <option value="">Select category</option>
+                  <option value="Software Engineering">Software Engineering</option>
+                  <option value="Data Science / AI">Data Science / AI</option>
+                  <option value="UI/UX Design">UI/UX Design</option>
+                  <option value="Cybersecurity">Cybersecurity</option>
+                  <option value="Networking & Cloud">Networking & Cloud</option>
+                </select>
               </div>
             </div>
 
@@ -1215,26 +1262,36 @@ export default function Profile() {
             <div className="p-5 space-y-6">
               {QUIZ_QUESTIONS.map((question) => {
                 const currentAnswer = quizAnswers[question.id] || {};
+                const selectedValues = Array.isArray(currentAnswer.answers) ? currentAnswer.answers : [];
 
                 return (
                   <div key={question.id} className="p-4 rounded-xl border border-emerald-100 bg-white/80">
                     <p className="text-xs font-semibold tracking-wide text-emerald-700 mb-1">{question.category}</p>
                     <p className="text-sm font-semibold text-gray-800 mb-3">{question.label}</p>
+                    {question.multiSelect && (
+                      <p className="text-xs text-gray-500 mb-3">You can choose multiple selections.</p>
+                    )}
 
                     <div className="space-y-2">
-                      {question.options.map((option) => (
-                        <label key={option} className="flex items-center gap-2 text-sm text-gray-700">
-                          <input
-                            type="radio"
-                            name={question.id}
-                            value={option}
-                            checked={currentAnswer.answer === option}
-                            onChange={() => handleQuizAnswerChange(question.id, option)}
-                            className="accent-emerald-600"
-                          />
-                          {option}
-                        </label>
-                      ))}
+                      {question.options.map((option) => {
+                        const isChecked = question.multiSelect
+                          ? selectedValues.includes(option)
+                          : currentAnswer.answer === option;
+
+                        return (
+                          <label key={option} className="flex items-center gap-2 text-sm text-gray-700">
+                            <input
+                              type={question.multiSelect ? "checkbox" : "radio"}
+                              name={question.id}
+                              value={option}
+                              checked={isChecked}
+                              onChange={() => handleQuizAnswerChange(question.id, option)}
+                              className="accent-emerald-600"
+                            />
+                            {option}
+                          </label>
+                        );
+                      })}
                     </div>
 
                     {currentAnswer.answer === "Other" && question.otherOptions && (

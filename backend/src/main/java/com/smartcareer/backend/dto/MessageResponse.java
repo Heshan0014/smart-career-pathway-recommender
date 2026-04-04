@@ -16,13 +16,15 @@ public class MessageResponse {
     private Instant repliedAt;
     private Instant updatedAt;
     private Boolean hasReply;
+    private Boolean studentBlocked;
 
     public MessageResponse() {
     }
 
     public MessageResponse(Long id, Long studentId, String studentName, String studentEmail, 
                           String studentMessage, String adminReply, Boolean isRead, 
-                          Boolean studentRead, Instant createdAt, Instant repliedAt, Instant updatedAt) {
+                          Boolean studentRead, Instant createdAt, Instant repliedAt, Instant updatedAt,
+                          Boolean studentBlocked) {
         this.id = id;
         this.studentId = studentId;
         this.studentName = studentName;
@@ -35,6 +37,7 @@ public class MessageResponse {
         this.repliedAt = repliedAt;
         this.updatedAt = updatedAt;
         this.hasReply = adminReply != null && !adminReply.isEmpty();
+        this.studentBlocked = studentBlocked;
     }
 
     public Long getId() {
@@ -131,5 +134,13 @@ public class MessageResponse {
 
     public void setHasReply(Boolean hasReply) {
         this.hasReply = hasReply;
+    }
+
+    public Boolean getStudentBlocked() {
+        return studentBlocked;
+    }
+
+    public void setStudentBlocked(Boolean studentBlocked) {
+        this.studentBlocked = studentBlocked;
     }
 }

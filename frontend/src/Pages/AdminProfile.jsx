@@ -171,16 +171,40 @@ export default function AdminProfile() {
       return;
     }
 
-    const payload = {
-      full_name: formData.full_name.trim(),
-      email: formData.email.trim().toLowerCase(),
-      phone_number: formData.phone_number.trim(),
-      address: formData.address,
-      profile_image: formData.profile_image,
+    const baseline = {
+      full_name: profile?.full_name || "",
+      email: profile?.email || "",
+      phone_number: profile?.phone_number || "",
+      address: profile?.address || "",
+      profile_image: profile?.profile_image || "",
     };
+
+    const payload = {};
+
+    if (formData.full_name.trim() !== baseline.full_name) {
+      payload.full_name = formData.full_name.trim();
+    }
+    if (formData.email.trim().toLowerCase() !== baseline.email) {
+      payload.email = formData.email.trim().toLowerCase();
+    }
+    if (formData.phone_number.trim() !== baseline.phone_number) {
+      payload.phone_number = formData.phone_number.trim();
+    }
+    if (formData.address !== baseline.address) {
+      payload.address = formData.address;
+    }
+    if (formData.profile_image !== baseline.profile_image) {
+      payload.profile_image = formData.profile_image;
+    }
 
     if (formData.password) {
       payload.password = formData.password;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      setToast({ type: "success", message: "No changes detected." });
+      setIsEditMode(false);
+      return;
     }
 
     try {
@@ -198,17 +222,21 @@ export default function AdminProfile() {
 
       const responseData = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(responseData.detail || "Failed to update admin profile.");
+        throw new Error(responseData.detail || responseData.message || "Failed to update admin profile.");
       }
 
       const updatedUser = {
-        ...currentUser,
+        ...(parseUser() || {}),
         full_name: responseData.full_name,
         email: responseData.email,
         phone_number: responseData.phone_number,
         profile_image: responseData.profile_image,
       };
-      localStorage.setItem("user", JSON.stringify(updatedUser));
+      try {
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      } catch (storageError) {
+        // Ignore storage quota errors so successful API updates are not shown as failed saves.
+      }
 
       setProfile(responseData);
       setFormData((prev) => ({

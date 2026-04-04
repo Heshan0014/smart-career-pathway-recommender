@@ -1,6 +1,7 @@
 package com.smartcareer.backend.service;
 
 import com.smartcareer.backend.dto.AdminReplyRequest;
+import com.smartcareer.backend.dto.AdminBlockUserRequest;
 import com.smartcareer.backend.dto.MessageResponse;
 import com.smartcareer.backend.dto.SendMessageRequest;
 import com.smartcareer.backend.entity.MessageEntity;
@@ -10,8 +11,10 @@ import com.smartcareer.backend.repository.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
@@ -39,6 +42,14 @@ public class MessageService {
 
         UserEntity student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        if (student.isMessageBlocked()) {
+            String reason = student.getMessageBlockedReason();
+            String blockedMessage = reason == null || reason.isBlank()
+                ? "Admin blocked you. If you want to contact admin, send mail to adminnextstepai@gmail.com."
+                : reason;
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, blockedMessage);
+        }
 
         MessageEntity message = new MessageEntity();
         message.setStudent(student);
@@ -141,6 +152,74 @@ public class MessageService {
     }
 
     /**
+     * Block a student from sending future messages.
+     */
+    public MessageResponse blockUserFromMessage(Long messageId, AdminBlockUserRequest request) {
+        MessageEntity message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+
+        UserEntity student = message.getStudent();
+        String reason = request != null && request.getReason() != null ? request.getReason().trim() : "";
+        if (reason.isEmpty()) {
+            reason = "Admin blocked you for repeated message activity. If you want to contact admin, send mail to adminnextstepai@gmail.com.";
+        }
+
+        student.setMessageBlocked(true);
+        student.setMessageBlockedReason(reason);
+        student.setMessageBlockedAt(Instant.now());
+        userRepository.save(student);
+
+        return convertToResponse(messageRepository.save(message));
+    }
+
+    /**
+     * Unblock a student so they can send messages again.
+     */
+    public MessageResponse unblockUserFromMessage(Long messageId) {
+        MessageEntity message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+
+        UserEntity student = message.getStudent();
+        student.setMessageBlocked(false);
+        student.setMessageBlockedReason(null);
+        student.setMessageBlockedAt(null);
+        userRepository.save(student);
+
+        return convertToResponse(messageRepository.save(message));
+    }
+
+    /**
+     * Block a student directly by student id (does not depend on a specific message row).
+     */
+    public void blockUserByStudentId(Long studentId, String reason) {
+        UserEntity student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        String normalizedReason = reason == null ? "" : reason.trim();
+        if (normalizedReason.isEmpty()) {
+            normalizedReason = "Admin blocked you for repeated message activity. If you want to contact admin, send mail to adminnextstepai@gmail.com.";
+        }
+
+        student.setMessageBlocked(true);
+        student.setMessageBlockedReason(normalizedReason);
+        student.setMessageBlockedAt(Instant.now());
+        userRepository.save(student);
+    }
+
+    /**
+     * Unblock a student directly by student id.
+     */
+    public void unblockUserByStudentId(Long studentId) {
+        UserEntity student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        student.setMessageBlocked(false);
+        student.setMessageBlockedReason(null);
+        student.setMessageBlockedAt(null);
+        userRepository.save(student);
+    }
+
+    /**
      * Delete a message (admin action)
      */
     public void deleteMessage(Long messageId) {
@@ -165,7 +244,8 @@ public class MessageService {
                 message.getStudentRead(),
                 message.getCreatedAt(),
                 message.getRepliedAt(),
-                message.getUpdatedAt()
+                message.getUpdatedAt(),
+                message.getStudent().isMessageBlocked()
         );
     }
 }
