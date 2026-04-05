@@ -13,10 +13,19 @@ function Hero() {
 
   const slides = [
     {
-      image:
-        "/images/slide1.jpg",
+      image: "/images/slide1.jpg",
       title: "AI-Powered Career Guidance",
       subtitle: "Discover the best career path based on your skills and interests",
+    },
+    {
+      image: "/images/p3.jpg",
+      title: "Skill-First Roadmaps For Real Jobs",
+      subtitle: "Get a guided step-by-step plan tailored to your current level and your target career role",
+    },
+    {
+      image: "/images/p4.jpg",
+      title: "Turn Learning Into Career Outcomes",
+      subtitle: "Move from confusion to clarity with smart course suggestions, project ideas, and growth tracking",
     },
   ];
 
@@ -25,7 +34,7 @@ function Hero() {
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrent((prev) => (prev + 1) % slides.length);
-    }, 4000);
+    }, 4500);
 
     return () => clearInterval(interval);
   }, [slides.length]);
@@ -49,20 +58,31 @@ function Hero() {
     : null;
   const shouldShowStudentStatus = isLoggedIn && currentUser?.user_role === "STUDENT" && completionPercentage !== null;
 
+  const goToPrev = () => {
+    setCurrent((prev) => (prev - 1 + slides.length) % slides.length);
+  };
+
+  const goToNext = () => {
+    setCurrent((prev) => (prev + 1) % slides.length);
+  };
+
   return (
-    <section id="home" className="relative w-full h-[500px] md:h-[600px] overflow-hidden">
+    <section id="home" className="relative w-full min-h-[670px] md:min-h-[720px] overflow-hidden home-hero-shell -mt-20">
       <img
         key={`hero-image-${current}`}
         src={slides[current].image}
         alt={slides[current].title}
-        className="banner-image-reveal w-full h-full object-cover"
+        className="banner-image-reveal w-full h-full absolute inset-0 object-cover"
       />
 
-      <div className="absolute inset-0 bg-gradient-to-r from-slate-950/70 via-slate-900/45 to-slate-900/20"></div>
+      <div className="absolute inset-0 bg-gradient-to-r from-[#1e293b]/85 via-[#0f172a]/60 to-[#111827]/35"></div>
+      <div className="hero-noise-layer absolute inset-0"></div>
+      <div className="home-hero-ribbon home-hero-ribbon-a"></div>
+      <div className="home-hero-ribbon home-hero-ribbon-b"></div>
 
       <div className="absolute inset-0 text-white">
         <div className="w-full px-6 md:px-10 lg:px-14 h-full flex flex-col justify-center">
-          <span className="inline-flex w-fit mb-4 rounded-full bg-white/20 backdrop-blur px-4 py-1 text-xs md:text-sm font-medium text-emerald-100 border border-white/30">
+          <span className="inline-flex w-fit mb-4 rounded-full bg-amber-100/20 backdrop-blur px-4 py-1 text-xs md:text-sm font-semibold text-amber-100 border border-amber-100/35 shadow-xl shadow-amber-500/20">
             Career Intelligence Platform
           </span>
           <h1 key={`hero-title-${current}`} className="banner-title-reveal text-4xl md:text-6xl font-semibold leading-tight max-w-3xl">
@@ -73,31 +93,38 @@ function Hero() {
           </p>
 
           {!isLoggedIn && (
-            <div className="mt-8">
+            <div className="mt-8 flex items-center gap-3 flex-wrap">
               <button
                 type="button"
                 onClick={() => navigate("/login")}
-                className="bg-emerald-500 hover:bg-emerald-600 text-white px-7 py-3 rounded-xl font-semibold shadow-lg shadow-emerald-700/30 transition"
+                className="bg-emerald-500 hover:bg-emerald-400 text-white px-7 py-3 rounded-xl font-semibold shadow-lg shadow-emerald-700/30 transition"
               >
                 Get Started
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/signup")}
+                className="px-6 py-3 rounded-xl font-semibold border border-emerald-200/55 bg-emerald-700/35 hover:bg-emerald-700/50 backdrop-blur transition"
+              >
+                Join For Free
               </button>
             </div>
           )}
 
           <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
-            <div className="rounded-xl bg-white/12 backdrop-blur px-4 py-3 border border-white/25">
+            <div className="home-stat-card rounded-xl bg-white/12 backdrop-blur px-4 py-3 border border-white/25">
               <p className="text-xs text-slate-200">Guidance Mode</p>
               <p className="font-semibold text-sm mt-1">AI Driven</p>
             </div>
-            <div className="rounded-xl bg-white/12 backdrop-blur px-4 py-3 border border-white/25">
+            <div className="home-stat-card rounded-xl bg-white/12 backdrop-blur px-4 py-3 border border-white/25">
               <p className="text-xs text-slate-200">Skill Mapping</p>
               <p className="font-semibold text-sm mt-1">Real-time</p>
             </div>
-            <div className="rounded-xl bg-white/12 backdrop-blur px-4 py-3 border border-white/25">
+            <div className="home-stat-card rounded-xl bg-white/12 backdrop-blur px-4 py-3 border border-white/25">
               <p className="text-xs text-slate-200">Suggestions</p>
               <p className="font-semibold text-sm mt-1">Personalized</p>
             </div>
-            <div className="rounded-xl bg-white/12 backdrop-blur px-4 py-3 border border-white/25">
+            <div className="home-stat-card rounded-xl bg-white/12 backdrop-blur px-4 py-3 border border-white/25">
               <p className="text-xs text-slate-200">Outcome</p>
               <p className="font-semibold text-sm mt-1">Career Path</p>
             </div>
@@ -123,22 +150,40 @@ function Hero() {
               </div>
             </div>
           )}
+
+          <div className="mt-8 flex items-center gap-2">
+            {slides.map((slide, i) => (
+              <button
+                key={slide.title}
+                type="button"
+                onClick={() => setCurrent(i)}
+                aria-label={`Go to slide ${i + 1}`}
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  current === i ? "w-12 bg-amber-400" : "w-6 bg-white/55 hover:bg-white/80"
+                }`}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
-        {slides.map((slide, i) => (
-          <button
-            type="button"
-            key={slide.title}
-            onClick={() => setCurrent(i)}
-            aria-label={`Go to slide ${i + 1}`}
-            className={`w-3 h-3 rounded-full cursor-pointer transition ${
-              current === i ? "bg-green-500" : "bg-white/90"
-            }`}
-          />
-        ))}
-      </div> */}
+      <button
+        type="button"
+        onClick={goToPrev}
+        aria-label="Previous banner"
+        className="absolute left-3 md:left-6 top-1/2 -translate-y-1/2 w-10 h-10 md:w-11 md:h-11 rounded-full bg-black/30 border border-white/35 text-white hover:bg-black/45 backdrop-blur flex items-center justify-center transition"
+      >
+        &#10094;
+      </button>
+
+      <button
+        type="button"
+        onClick={goToNext}
+        aria-label="Next banner"
+        className="absolute right-3 md:right-6 top-1/2 -translate-y-1/2 w-10 h-10 md:w-11 md:h-11 rounded-full bg-black/30 border border-white/35 text-white hover:bg-black/45 backdrop-blur flex items-center justify-center transition"
+      >
+        &#10095;
+      </button>
     </section>
   );
 }
@@ -156,10 +201,11 @@ function Features() {
   const featurePages = [data.slice(0, 3), data.slice(2, 5)];
 
   return (
-    <section id="features" className="py-16 bg-gradient-to-b from-slate-50 to-white">
+    <section id="features" className="py-0 bg-gradient-to-b from-amber-50 via-rose-50/40 to-sky-50/80 home-feature-weave">
       <div className="mx-auto max-w-7xl px-6">
         <div className="text-center mb-8">
-          <h2 className="text-3xl md:text-4xl font-semibold text-slate-900">Core Features</h2>
+          
+          <h2 className="text-3xl md:text-4xl font-semibold text-slate-900 mt-4">Core Features</h2>
           <p className="text-slate-600 mt-3">Modern tools to map your skills to the right career direction.</p>
         </div>
 
@@ -171,23 +217,25 @@ function Features() {
           >
             {featurePages.map((page, pageIndex) => (
               <div key={pageIndex} className="min-w-full grid grid-cols-1 md:grid-cols-3 gap-8 place-items-center">
-                {page.map((item) => (
+                {page.map((item, itemIndex) => (
                   <div
                     key={`${pageIndex}-${item.title}`}
-                    className="relative w-80 h-64 rounded-2xl overflow-hidden cursor-pointer group border border-slate-200 shadow-md hover:shadow-xl transition"
+                    className="relative w-80 h-64 rounded-2xl overflow-hidden cursor-pointer group border border-rose-200/70 shadow-lg shadow-rose-200/45 hover:shadow-xl hover:-translate-y-1 transition duration-300"
                   >
                     <img
                       src={item.img}
                       alt={item.title}
-                      className="w-full h-full object-cover brightness-110 group-hover:brightness-75 transition duration-500"
+                      className="w-full h-full object-cover brightness-110 group-hover:scale-110 group-hover:brightness-90 transition duration-500"
                     />
 
-                    {/* Darken only on hover */}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition duration-500"></div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#4c1d95]/75 via-[#0f172a]/10 to-transparent opacity-80 group-hover:opacity-100 transition duration-500"></div>
 
-                    {/* Name on hover */}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <p className="text-white font-semibold text-xl opacity-0 group-hover:opacity-100 transition duration-500 text-center px-3">
+                    <div className="absolute top-3 left-3 w-8 h-8 rounded-full bg-amber-100/90 text-rose-900 font-semibold text-sm flex items-center justify-center backdrop-blur">
+                      {pageIndex * 3 + itemIndex + 1}
+                    </div>
+
+                    <div className="absolute inset-0 flex items-end justify-start p-4">
+                      <p className="text-white font-semibold text-lg md:text-xl opacity-90 group-hover:opacity-100 transition duration-500 text-left max-w-[90%] leading-snug">
                         {item.title}
                       </p>
                     </div>
@@ -207,7 +255,7 @@ function Features() {
               onClick={() => setActivePage(i)}
               aria-label={`Show feature group ${i + 1}`}
               className={`h-2.5 rounded-full cursor-pointer transition-all duration-300 ${
-                activePage === i ? "w-8 bg-emerald-500" : "w-2.5 bg-slate-300"
+                activePage === i ? "w-8 bg-rose-600" : "w-2.5 bg-rose-300"
               }`}
             />
           ))}
@@ -229,62 +277,60 @@ function HowItWorks() {
   ];
 
   return (
-    <section id="how" className="py-16 bg-slate-950">
+    <section id="how" className="py-20 mt-5 bg-gradient-to-b from-[#111827] to-[#1f2937] relative overflow-hidden">
+      <div className="absolute -top-28 -left-20 w-72 h-72 rounded-full bg-amber-300/15 blur-3xl"></div>
+      <div className="absolute -bottom-28 -right-20 w-80 h-80 rounded-full bg-rose-400/15 blur-3xl"></div>
       <div className="mx-auto max-w-7xl px-6">
         <div className="text-center mb-8">
+          <span className="inline-flex rounded-full px-3 py-1 text-xs font-semibold tracking-wide uppercase bg-amber-200/15 text-amber-100 border border-amber-100/30">Your Journey</span>
           <h2 className="text-3xl md:text-4xl font-semibold text-white">How It Works</h2>
           <p className="text-slate-300 mt-3">A simple guided flow from sign up to AI-generated career roadmap.</p>
         </div>
 
-        <div className="pb-4 overflow-x-auto">
-          <div className="mx-auto min-w-[1080px] max-w-7xl rounded-2xl overflow-hidden shadow-2xl shadow-black/40 flex border border-slate-700">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           {steps.map((step, i) => (
             <div
               key={i}
               onMouseEnter={() => setHoveredIndex(i)}
               onMouseLeave={() => setHoveredIndex(null)}
-              className={`relative h-72 md:h-80 flex-1 cursor-pointer transition-all duration-500 ${
-                hoveredIndex === i ? "z-10 scale-105" : "z-0"
+              className={`relative h-72 rounded-2xl overflow-hidden cursor-pointer border border-white/15 transition-all duration-500 ${
+                hoveredIndex === i ? "scale-[1.02] shadow-2xl shadow-amber-500/25" : "shadow-lg shadow-black/25"
               }`}
             >
               <img
                 src={step.img}
                 alt={step.title}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition duration-500 group-hover:scale-105"
               />
 
-              {/* Dark for non-hovered cards, lighter for hovered */}
               <div
                 className={`absolute inset-0 transition duration-500 ${
                   hoveredIndex === null
-                    ? "bg-black/35"
+                    ? "bg-black/45"
                     : hoveredIndex === i
-                    ? "bg-black/10"
-                    : "bg-black/55"
+                    ? "bg-black/20"
+                    : "bg-black/60"
                 }`}
               ></div>
 
-              {/* Number */}
-              <div className="absolute top-3 left-3 bg-emerald-500 text-white w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium shadow">
+              <div className="absolute top-3 left-3 bg-amber-400 text-slate-900 w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium shadow-lg shadow-amber-700/40">
                 {i + 1}
               </div>
 
-              {/* Full-size transparent title box */}
               <div
                 className={`absolute inset-0 flex items-end justify-center pb-4 text-center transition duration-500 ${
                   hoveredIndex === i
-                    ? "bg-white/24 text-black"
-                    : "bg-white/8 text-white"
+                    ? "bg-white/20 text-black"
+                    : "bg-white/5 text-white"
                 }`}
               >
-                <p className="text-sm md:text-base font-semibold px-3 py-2 rounded-md bg-black/20 backdrop-blur-sm">
+                <p className="text-sm md:text-base font-semibold px-3 py-2 rounded-md bg-black/25 backdrop-blur-sm">
                   {step.title}
                 </p>
               </div>
             </div>
           ))}
         </div>
-      </div>
       </div>
     </section>
   );
@@ -308,9 +354,10 @@ function SuccessStories() {
   ];
 
   return (
-    <section id="stories" className="py-16 bg-gradient-to-b from-white to-slate-100">
+    <section id="stories" className="py-20 bg-gradient-to-b from-amber-50/70 via-white to-rose-50/70">
       <div className="mx-auto max-w-7xl px-6">
         <div className="text-center mb-10">
+          <span className="inline-flex rounded-full px-3 py-1 text-xs font-semibold tracking-wide uppercase bg-rose-100 text-rose-700">Community Voices</span>
           <h2 className="text-3xl md:text-4xl font-semibold text-slate-900">Success Stories</h2>
           <p className="text-slate-600 mt-3">See how learners used the platform to start focused career journeys.</p>
         </div>
@@ -319,8 +366,10 @@ function SuccessStories() {
         {stories.map((story, i) => (
           <div
             key={i}
-            className="bg-white p-7 rounded-2xl shadow-md border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition duration-300"
+            className="relative bg-white/90 backdrop-blur p-7 rounded-2xl shadow-lg border border-rose-200/70 hover:shadow-xl hover:-translate-y-1 transition duration-300 overflow-hidden"
           >
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-amber-100/90 to-transparent rounded-bl-full"></div>
+            <p className="text-3xl text-rose-500 font-serif leading-none">“</p>
             <p className="text-sm text-slate-600 leading-6 mb-5">
               "{story.text}"
             </p>
@@ -337,10 +386,12 @@ function SuccessStories() {
 // ================= FOOTER =================
 function Footer() {
   return (
-    <footer className="bg-slate-950 text-slate-300 py-10 border-t border-slate-800">
+    <footer className="bg-[#1f2937] text-slate-300 py-12 border-t border-slate-700/80 relative overflow-hidden">
+      <div className="absolute -top-24 -right-16 w-56 h-56 rounded-full bg-rose-500/15 blur-3xl"></div>
+      <div className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full bg-amber-500/15 blur-3xl"></div>
       <div className="mx-auto max-w-7xl px-6 flex flex-col md:flex-row items-center justify-between gap-4">
         <div>
-          <p className="text-white font-semibold">NextStep IT</p>
+          <p className="text-white font-semibold text-lg">NextStep IT</p>
           <p className="text-sm text-slate-400 mt-1">AI-powered pathway planning for modern careers.</p>
         </div>
         <p className="text-sm">© 2026 Smart Career Pathway System</p>
@@ -355,6 +406,7 @@ export default function HomePage() {
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [studentUnreadCount, setStudentUnreadCount] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   useEffect(() => {
     const userData = localStorage.getItem("user");
@@ -411,20 +463,43 @@ export default function HomePage() {
     }
   }, [location.hash]);
 
+  useEffect(() => {
+    const onScroll = () => {
+      setShowScrollTop(window.scrollY > 220);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   const isStudent = currentUser?.user_role === "STUDENT";
 
   return (
     <>
       <CommonHeader />
-      <Hero />
-      <Features />
-      <HowItWorks />
-      <SuccessStories />
-      <Footer />
+      <main className="home-page-wrap">
+        <Hero />
+        <Features />
+        <HowItWorks />
+        <SuccessStories />
+        <Footer />
+      </main>
 
       {/* Chatbot Icon - Fixed Position (Only for Students) */}
       {isStudent && (
         <>
+          {showScrollTop && (
+            <button
+              type="button"
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              className="fixed bottom-24 right-8 w-12 h-12 rounded-full transition-all flex items-center justify-center z-40 scroll-top-fab"
+              title="Go to top"
+              aria-label="Go to top"
+            >
+              <span className="scroll-top-fab-icon">&#8593;</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsMessageModalOpen(true)}

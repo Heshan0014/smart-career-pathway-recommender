@@ -121,7 +121,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-100">
-      <CommonHeader />
+      <CommonHeader alwaysVisible />
       
       {/* Top Tab Navigation */}
       <div className="flex justify-center gap-3 pt-6 px-4">

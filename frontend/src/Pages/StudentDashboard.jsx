@@ -159,8 +159,8 @@ export default function StudentDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen app-shell-bg">
-        <CommonHeader />
+      <div className="min-h-screen app-shell-bg student-dashboard-premium professional-page-font">
+        <CommonHeader alwaysVisible />
         <div className="max-w-7xl mx-auto p-6 md:p-10">
           <StudentPageLoader message="Loading dashboard..." />
         </div>
@@ -169,8 +169,8 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="min-h-screen app-shell-bg">
-      <CommonHeader user={profile} />
+    <div className="min-h-screen app-shell-bg student-dashboard-premium professional-page-font">
+      <CommonHeader user={profile} alwaysVisible />
 
       <div className="max-w-7xl mx-auto p-6 md:p-10 space-y-6">
         <StudentBanner type="error" message={error} />
@@ -193,7 +193,7 @@ export default function StudentDashboard() {
         ) : (
           <>
 
-        <section className="glass-panel rounded-2xl p-6 md:p-8">
+        <section className="glass-panel rounded-2xl p-6 md:p-8 dashboard-hero-card">
           <p className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Student Dashboard</p>
           <h1 className="text-2xl md:text-4xl font-extrabold text-slate-900 mt-2">
             Welcome back, {profile?.full_name || "Student"}
@@ -204,7 +204,7 @@ export default function StudentDashboard() {
         </section>
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="glass-panel-soft rounded-2xl p-5">
+          <div className="glass-panel-soft rounded-2xl p-5 dashboard-kpi-card">
             <p className="text-xs uppercase tracking-wide text-slate-500">Profile Completion</p>
             <p className="text-3xl font-bold text-emerald-700 mt-2">{progress}%</p>
             <div className="w-full h-2 mt-3 rounded-full bg-emerald-100 overflow-hidden">
@@ -219,7 +219,7 @@ export default function StudentDashboard() {
             </button>
           </div>
 
-          <div className="glass-panel-soft rounded-2xl p-5">
+          <div className="glass-panel-soft rounded-2xl p-5 dashboard-kpi-card">
             <p className="text-xs uppercase tracking-wide text-slate-500">Quiz Status</p>
             <p className={`text-2xl font-bold mt-2 ${quizSubmitted ? "text-emerald-700" : "text-amber-700"}`}>
               {quizSubmitted ? "Submitted" : "Pending"}
@@ -236,7 +236,7 @@ export default function StudentDashboard() {
             </button>
           </div>
 
-          <div className="glass-panel-soft rounded-2xl p-5">
+          <div className="glass-panel-soft rounded-2xl p-5 dashboard-kpi-card">
             <p className="text-xs uppercase tracking-wide text-slate-500">Recommendation Gate</p>
             <p className={`text-2xl font-bold mt-2 ${recommendationEligible ? "text-emerald-700" : "text-amber-700"}`}>
               {recommendationEligible ? "Ready" : "Locked"}
@@ -254,7 +254,7 @@ export default function StudentDashboard() {
           </div>
         </section>
 
-        <section className="glass-panel rounded-2xl p-6">
+        <section className="glass-panel rounded-2xl p-6 dashboard-readiness-card">
           <h2 className="modern-section-title">Readiness Checklist</h2>
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <div className={`rounded-xl px-3 py-2 ${progress >= requiredCompletion ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-800 border border-amber-200"}`}>
@@ -286,7 +286,7 @@ export default function StudentDashboard() {
         </section>
 
         {recommendation && (
-          <section className="glass-panel rounded-2xl p-6" id="student-recommendation-panel">
+          <section className="glass-panel rounded-2xl p-6 dashboard-recommendation-card" id="student-recommendation-panel">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="modern-section-title">Your Recommendation</h2>
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">

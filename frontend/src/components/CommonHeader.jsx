@@ -4,10 +4,12 @@ import MessageModal from "./MessageModal";
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
-export default function CommonHeader({ user = null }) {
+export default function CommonHeader({ user = null, alwaysVisible = false }) {
   const [localUser, setLocalUser] = useState(null);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showSolidHeader, setShowSolidHeader] = useState(false);
+  const [hideHeaderItems, setHideHeaderItems] = useState(false);
   const navigate = useNavigate();
   const activeUser = user || localUser;
   const isAdmin = activeUser?.user_role === "ADMIN";
@@ -68,24 +70,71 @@ export default function CommonHeader({ user = null }) {
     return () => clearInterval(interval);
   }, [isAdmin, isStudent]);
 
+  useEffect(() => {
+    if (alwaysVisible) {
+      setShowSolidHeader(true);
+      setHideHeaderItems(false);
+      return;
+    }
+
+    let lastScrollY = window.scrollY;
+
+    const onScroll = () => {
+      const currentScrollY = window.scrollY;
+      const nextShowSolid = currentScrollY > 30 && currentScrollY < lastScrollY;
+      const isScrollingDown = currentScrollY > lastScrollY;
+
+      if (currentScrollY <= 30) {
+        setHideHeaderItems(false);
+      } else if (isScrollingDown) {
+        setHideHeaderItems(true);
+      } else {
+        setHideHeaderItems(false);
+      }
+
+      setShowSolidHeader((prev) => (prev === nextShowSolid ? prev : nextShowSolid));
+      lastScrollY = currentScrollY;
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [alwaysVisible]);
+
+  const headerShellClass = showSolidHeader
+    ? "bg-white/95 border-slate-200/80 shadow-lg shadow-slate-300/35 backdrop-blur-xl"
+    : "bg-transparent border-transparent shadow-none backdrop-blur-0";
+
+  const brandTextClass = showSolidHeader ? "text-slate-900" : "text-white";
+  const navTextClass = showSolidHeader
+    ? "text-sm text-slate-700 font-semibold"
+    : "text-sm text-slate-100/90 font-semibold";
+
+  const navLinkClass = showSolidHeader
+    ? "relative transition text-slate-700 hover:text-rose-700"
+    : "relative transition text-slate-100 hover:text-white";
+
+  const headerItemsClass = hideHeaderItems
+    ? "opacity-0 -translate-y-3 pointer-events-none"
+    : "opacity-100 translate-y-0 pointer-events-auto";
+
   return (
     <>
-      <header className="w-full sticky top-0 z-50 border-b border-slate-200/60 bg-white/90 backdrop-blur-xl">
-        <div className="mx-auto max-w-7xl flex items-center px-4 md:px-8 py-3">
+      <header className="w-full sticky top-0 z-50 px-3 md:px-5 pt-3">
+        <div className={`mx-auto  flex items-center px-4 md:px-8 py-3 rounded-2xl border transition-all duration-300 ${headerShellClass} ${headerItemsClass}`}>
           <div className="flex items-center gap-3">
-            <div className={isAdmin ? "admin-brand-logo" : "w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white font-bold flex items-center justify-center shadow-md"}>
+            <div className={isAdmin ? "admin-brand-logo" : "w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-700 to-emerald-400 text-white font-black flex items-center justify-center shadow-lg shadow-emerald-500/40"}>
               N
             </div>
-            <h1 className="text-lg md:text-xl font-semibold text-slate-900 tracking-tight">NextStep IT</h1>
+            <h1 className={`text-lg md:text-xl font-semibold tracking-tight ${brandTextClass}`}>NextStep IT</h1>
           </div>
 
           {!isAdmin && (
             <div className="hidden md:flex flex-1 justify-center">
-              <nav className="flex gap-7 text-sm text-slate-600 font-medium justify-center">
-                <Link to={{ pathname: "/", hash: "#home" }} className="hover:text-emerald-600 transition">Home</Link>
-                <Link to={{ pathname: "/", hash: "#features" }} className="hover:text-emerald-600 transition">Features</Link>
-                <Link to={{ pathname: "/", hash: "#how" }} className="hover:text-emerald-600 transition">How It Works</Link>
-                <Link to={{ pathname: "/", hash: "#stories" }} className="hover:text-emerald-600 transition">Success Stories</Link>
+              <nav className={`flex gap-7 justify-center ${navTextClass}`}>
+                <Link to={{ pathname: "/", hash: "#home" }} className={navLinkClass}>Home</Link>
+                <Link to={{ pathname: "/", hash: "#features" }} className={navLinkClass}>Features</Link>
+                <Link to={{ pathname: "/", hash: "#how" }} className={navLinkClass}>How It Works</Link>
+                <Link to={{ pathname: "/", hash: "#stories" }} className={navLinkClass}>Success Stories</Link>
               </nav>
             </div>
           )}
@@ -96,7 +145,11 @@ export default function CommonHeader({ user = null }) {
                 <button
                   type="button"
                   onClick={() => navigate("/dashboard")}
-                  className="px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition"
+                  className={`px-3 py-2 text-xs font-semibold rounded-lg border transition ${
+                    showSolidHeader
+                      ? "text-rose-800 bg-white/70 border-rose-200 hover:bg-white"
+                      : "text-white bg-white/10 border-white/30 hover:bg-white/20"
+                  }`}
                 >
                   Dashboard
                 </button>
@@ -106,7 +159,11 @@ export default function CommonHeader({ user = null }) {
                 <button
                   type="button"
                   onClick={() => navigate("/admin/messages")}
-                  className="relative w-10 h-10 flex items-center justify-center text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                  className={`relative w-10 h-10 flex items-center justify-center rounded-lg transition ${
+                    showSolidHeader
+                      ? "text-slate-700 hover:text-rose-700 hover:bg-white/70"
+                      : "text-slate-100 hover:text-white hover:bg-white/15"
+                  }`}
                   title="View student messages"
                 >
                   <img src="/Images/message.png" alt="Messages" className="w-7 h-7 object-contain" />
@@ -119,14 +176,16 @@ export default function CommonHeader({ user = null }) {
               )}
 
               <div className="hidden sm:flex flex-col items-end text-right">
-                <span className="text-sm text-slate-700">Hi, {activeUser.full_name || "User"}</span>
-                {isAdmin && <span className="text-xs text-sky-600 font-semibold">Admin</span>}
+                <span className={`text-sm ${showSolidHeader ? "text-slate-700" : "text-slate-100"}`}>Hi, {activeUser.full_name || "User"}</span>
+                {isAdmin && <span className={`text-xs font-semibold ${showSolidHeader ? "text-rose-600" : "text-amber-300"}`}>Admin</span>}
               </div>
 
               <button
                 type="button"
                 onClick={() => navigate(isAdmin ? "/admin/profile" : "/profile")}
-                className="w-9 h-9 bg-slate-200 rounded-full flex items-center justify-center hover:bg-slate-300 overflow-hidden transition"
+                className={`w-9 h-9 rounded-full flex items-center justify-center overflow-hidden transition ${
+                  showSolidHeader ? "bg-rose-100 hover:bg-rose-200" : "bg-white/85 hover:bg-white"
+                }`}
                 title="Go to profile"
               >
                 {activeUser.profile_image ? (
@@ -138,8 +197,24 @@ export default function CommonHeader({ user = null }) {
             </div>
           ) : (
             <div className="flex gap-2 items-center">
-              <Link to="/login" className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition">Login</Link>
-              <Link to="/signup" className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm transition">Sign Up</Link>
+              <Link
+                to="/login"
+                className={`px-3 py-1.5 text-sm rounded-lg transition border ${
+                  showSolidHeader
+                    ? "border-rose-200 text-slate-700 hover:bg-white/80"
+                    : "border-white/35 text-white hover:bg-white/15"
+                }`}
+              >
+                Login
+              </Link>
+              <Link
+                to="/signup"
+                className={`px-3 py-1.5 text-sm text-white rounded-lg shadow-sm transition ${
+                  showSolidHeader ? "bg-rose-600 hover:bg-rose-500" : "bg-amber-500 hover:bg-amber-400 text-slate-900"
+                }`}
+              >
+                Sign Up
+              </Link>
             </div>
           )}
         </div>

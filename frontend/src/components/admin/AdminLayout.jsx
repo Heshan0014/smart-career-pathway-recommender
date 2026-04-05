@@ -31,7 +31,7 @@ export default function AdminLayout({ user, title, subtitle, actions, children }
 
   return (
     <div className="min-h-screen admin-light-shell">
-      <CommonHeader user={user} />
+      <CommonHeader user={user} alwaysVisible />
       <div className="max-w-[1440px] mx-auto px-3 md:px-6 py-4 md:py-6">
         <div className={`grid grid-cols-1 ${isSidebarCollapsed ? "lg:grid-cols-[88px_minmax(0,1fr)]" : "lg:grid-cols-[230px_minmax(0,1fr)]"} gap-4 md:gap-6 admin-grid-transition`}>
           <aside className={`admin-side-card rounded-2xl p-3 md:p-4 ${isSidebarCollapsed ? "is-collapsed" : ""}`}>

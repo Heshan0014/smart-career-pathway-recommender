@@ -118,7 +118,7 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-100">
-      <CommonHeader />
+      <CommonHeader alwaysVisible />
       <div className="flex items-center justify-center py-10 px-4">
         <div className="flex bg-white/95 backdrop-blur shadow-2xl rounded-3xl overflow-hidden w-[980px] border border-emerald-100">
           <div className="w-1/2 bg-gradient-to-br from-emerald-600 to-teal-700">

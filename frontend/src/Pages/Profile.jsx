@@ -420,6 +420,7 @@ export default function Profile() {
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [studentUnreadCount, setStudentUnreadCount] = useState(0);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const passwordValue = formData?.password || "";
   const passwordChecks = getPasswordChecks(passwordValue);
@@ -533,6 +534,15 @@ export default function Profile() {
     loadUnreadCount();
     const interval = setInterval(loadUnreadCount, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => {
+      setShowScrollTop(window.scrollY > 220);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   const handleImageUpload = (event) => {
@@ -866,8 +876,8 @@ export default function Profile() {
 
   if (loading) {
     return (
-      <div className="min-h-screen app-shell-bg">
-        <CommonHeader />
+      <div className="min-h-screen app-shell-bg student-profile-premium professional-page-font">
+        <CommonHeader alwaysVisible />
         <div className="max-w-7xl mx-auto p-6 md:p-10">
           <StudentPageLoader message="Loading profile..." />
         </div>
@@ -877,8 +887,8 @@ export default function Profile() {
 
   if (!formData) {
     return (
-      <div className="min-h-screen app-shell-bg">
-        <CommonHeader user={profile} />
+      <div className="min-h-screen app-shell-bg student-profile-premium professional-page-font">
+        <CommonHeader user={profile} alwaysVisible />
         <div className="max-w-7xl mx-auto p-6 md:p-10">
           <StudentEmptyState
             title="Profile data is unavailable"
@@ -899,8 +909,8 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen app-shell-bg">
-      <CommonHeader user={profile} />
+    <div className="min-h-screen app-shell-bg student-profile-premium professional-page-font">
+      <CommonHeader user={profile} alwaysVisible />
 
       <div className="max-w-7xl mx-auto p-6 md:p-10 grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="glass-panel p-6 rounded-2xl text-center lg:col-span-1">
@@ -1477,6 +1487,18 @@ export default function Profile() {
       )}
 
       {/* Chatbot Icon - Fixed Position */}
+      {showScrollTop && (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          className="fixed bottom-24 right-8 w-12 h-12 rounded-full transition-all flex items-center justify-center z-40 scroll-top-fab"
+          title="Go to top"
+          aria-label="Go to top"
+        >
+          <span className="scroll-top-fab-icon">&#8593;</span>
+        </button>
+      )}
+
       <button
         type="button"
         onClick={() => setIsMessageModalOpen(true)}
