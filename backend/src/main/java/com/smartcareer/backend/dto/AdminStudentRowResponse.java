@@ -19,6 +19,9 @@ public class AdminStudentRowResponse {
     @JsonProperty("quiz_submitted")
     private boolean quizSubmitted;
 
+    @JsonProperty("assessment_completed")
+    private boolean assessmentCompleted;
+
     @JsonProperty("recommendation_eligible")
     private boolean recommendationEligible;
 
@@ -31,6 +34,7 @@ public class AdminStudentRowResponse {
         String email,
         int profileCompletionPercentage,
         boolean quizSubmitted,
+        boolean assessmentCompleted,
         boolean recommendationEligible,
         Instant lastUpdatedAt
     ) {
@@ -39,6 +43,7 @@ public class AdminStudentRowResponse {
         this.email = email;
         this.profileCompletionPercentage = profileCompletionPercentage;
         this.quizSubmitted = quizSubmitted;
+        this.assessmentCompleted = assessmentCompleted;
         this.recommendationEligible = recommendationEligible;
         this.lastUpdatedAt = lastUpdatedAt;
     }
@@ -61,6 +66,10 @@ public class AdminStudentRowResponse {
 
     public boolean isQuizSubmitted() {
         return quizSubmitted;
+    }
+
+    public boolean isAssessmentCompleted() {
+        return assessmentCompleted;
     }
 
     public boolean isRecommendationEligible() {

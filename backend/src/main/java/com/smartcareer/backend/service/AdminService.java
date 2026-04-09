@@ -11,6 +11,7 @@ import com.smartcareer.backend.entity.UserEntity;
 import com.smartcareer.backend.entity.UserRole;
 import com.smartcareer.backend.repository.QuizSubmissionRepository;
 import com.smartcareer.backend.repository.UserRepository;
+import com.smartcareer.backend.repository.VerifiedSkillRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -42,17 +43,20 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final QuizSubmissionRepository quizSubmissionRepository;
+    private final VerifiedSkillRepository verifiedSkillRepository;
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
 
     public AdminService(
         UserRepository userRepository,
         QuizSubmissionRepository quizSubmissionRepository,
+        VerifiedSkillRepository verifiedSkillRepository,
         JwtUtil jwtUtil,
         PasswordEncoder passwordEncoder
     ) {
         this.userRepository = userRepository;
         this.quizSubmissionRepository = quizSubmissionRepository;
+        this.verifiedSkillRepository = verifiedSkillRepository;
         this.jwtUtil = jwtUtil;
         this.passwordEncoder = passwordEncoder;
     }
@@ -64,6 +68,7 @@ public class AdminService {
         long totalStudents = snapshots.size();
         long completedProfiles = snapshots.stream().filter(StudentSnapshot::profileCompleted).count();
         long quizSubmittedCount = snapshots.stream().filter(StudentSnapshot::quizSubmitted).count();
+        long assessmentCompletedCount = snapshots.stream().filter(StudentSnapshot::assessmentCompleted).count();
         long recommendationReadyCount = snapshots.stream().filter(StudentSnapshot::recommendationEligible).count();
         long pendingProfiles = totalStudents - completedProfiles;
 
@@ -72,6 +77,7 @@ public class AdminService {
             completedProfiles,
             pendingProfiles,
             quizSubmittedCount,
+            assessmentCompletedCount,
             recommendationReadyCount,
             Instant.now()
         );
@@ -114,6 +120,7 @@ public class AdminService {
                     item.email(),
                     item.profileCompletionPercentage(),
                     item.quizSubmitted(),
+                    item.assessmentCompleted(),
                     item.recommendationEligible(),
                     item.lastUpdatedAt()
                 ))
@@ -191,11 +198,16 @@ public class AdminService {
             .map(submission -> submission.getUser().getId())
             .collect(Collectors.toSet());
 
+        Set<Long> assessmentCompletedUserIds = verifiedSkillRepository.findAll().stream()
+            .map(item -> item.getUser().getId())
+            .collect(Collectors.toSet());
+
         return students.stream().map(student -> {
             int completionPercentage = calculateProfileCompletionPercentage(student);
             boolean quizSubmitted = quizSubmittedUserIds.contains(student.getId());
+            boolean assessmentCompleted = assessmentCompletedUserIds.contains(student.getId());
             boolean profileCompleted = completionPercentage >= PROFILE_COMPLETION_THRESHOLD;
-            boolean recommendationEligible = profileCompleted && quizSubmitted;
+            boolean recommendationEligible = profileCompleted && quizSubmitted && assessmentCompleted;
             Instant lastUpdatedAt = student.getUpdatedAt() != null ? student.getUpdatedAt() : student.getCreatedAt();
 
             return new StudentSnapshot(
@@ -205,6 +217,7 @@ public class AdminService {
                 completionPercentage,
                 profileCompleted,
                 quizSubmitted,
+                assessmentCompleted,
                 recommendationEligible,
                 lastUpdatedAt
             );
@@ -347,6 +360,7 @@ public class AdminService {
         int profileCompletionPercentage,
         boolean profileCompleted,
         boolean quizSubmitted,
+        boolean assessmentCompleted,
         boolean recommendationEligible,
         Instant lastUpdatedAt
     ) {

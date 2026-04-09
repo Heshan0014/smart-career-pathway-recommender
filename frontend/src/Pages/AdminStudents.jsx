@@ -111,7 +111,7 @@ export default function AdminStudents() {
     <AdminLayout
       user={currentUser}
       title="Students"
-      subtitle="Search and monitor profile completion, quiz submission, and recommendation readiness."
+      subtitle="Search and monitor profile completion, quiz submission, assessment completion, and recommendation readiness."
       actions={<button type="button" onClick={loadStudents} className="admin-lite-btn admin-lite-btn-primary">Refresh</button>}
     >
       <AdminToast type={toast.type} message={toast.message} onClose={() => setToast({ type: "error", message: "" })} />
@@ -181,6 +181,7 @@ export default function AdminStudents() {
                 <th className="px-4 py-3 font-semibold">Email</th>
                 <th className="px-4 py-3 font-semibold">Profile %</th>
                 <th className="px-4 py-3 font-semibold">Quiz</th>
+                <th className="px-4 py-3 font-semibold">Assessment</th>
                 <th className="px-4 py-3 font-semibold">Recommendation</th>
                 <th className="px-4 py-3 font-semibold">Last Updated</th>
               </tr>
@@ -188,11 +189,11 @@ export default function AdminStudents() {
             <tbody>
               {loadingStudents ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">Loading students...</td>
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">Loading students...</td>
                 </tr>
               ) : students.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No students found for current filters.</td>
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">No students found for current filters.</td>
                 </tr>
               ) : (
                 students.map((student) => (
@@ -207,6 +208,11 @@ export default function AdminStudents() {
                     <td className="px-4 py-3">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${student.quiz_submitted ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>
                         {student.quiz_submitted ? "Submitted" : "Pending"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${student.assessment_completed ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>
+                        {student.assessment_completed ? "Completed" : "Pending"}
                       </span>
                     </td>
                     <td className="px-4 py-3">

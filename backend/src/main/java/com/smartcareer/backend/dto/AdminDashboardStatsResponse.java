@@ -18,6 +18,9 @@ public class AdminDashboardStatsResponse {
     @JsonProperty("quiz_submitted_count")
     private long quizSubmittedCount;
 
+    @JsonProperty("assessment_completed_count")
+    private long assessmentCompletedCount;
+
     @JsonProperty("recommendation_ready_count")
     private long recommendationReadyCount;
 
@@ -29,6 +32,7 @@ public class AdminDashboardStatsResponse {
         long completedProfiles,
         long pendingProfiles,
         long quizSubmittedCount,
+        long assessmentCompletedCount,
         long recommendationReadyCount,
         Instant lastRefreshedAt
     ) {
@@ -36,6 +40,7 @@ public class AdminDashboardStatsResponse {
         this.completedProfiles = completedProfiles;
         this.pendingProfiles = pendingProfiles;
         this.quizSubmittedCount = quizSubmittedCount;
+        this.assessmentCompletedCount = assessmentCompletedCount;
         this.recommendationReadyCount = recommendationReadyCount;
         this.lastRefreshedAt = lastRefreshedAt;
     }
@@ -54,6 +59,10 @@ public class AdminDashboardStatsResponse {
 
     public long getQuizSubmittedCount() {
         return quizSubmittedCount;
+    }
+
+    public long getAssessmentCompletedCount() {
+        return assessmentCompletedCount;
     }
 
     public long getRecommendationReadyCount() {

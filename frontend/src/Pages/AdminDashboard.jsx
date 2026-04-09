@@ -25,6 +25,7 @@ export default function AdminDashboard() {
   const [quickStudents, setQuickStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState({ type: "error", message: "" });
+  const [pieAnimatedRatio, setPieAnimatedRatio] = useState(0);
 
   const forceLogout = useCallback((message) => {
     localStorage.removeItem("token");
@@ -95,10 +96,35 @@ export default function AdminDashboard() {
     ? Math.round(((stats?.recommendation_ready_count || 0) * 100) / stats.total_students)
     : 0;
 
+  useEffect(() => {
+    if (loading) {
+      setPieAnimatedRatio(0);
+      return;
+    }
+
+    const target = Math.max(0, Math.min(100, readinessRatio));
+    const duration = 850;
+    const start = performance.now();
+
+    const tick = (now) => {
+      const elapsed = now - start;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setPieAnimatedRatio(Math.round(target * eased));
+
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+      }
+    };
+
+    requestAnimationFrame(tick);
+  }, [loading, readinessRatio]);
+
   const completionChartData = [
     { label: "Completed", value: stats?.completed_profiles || 0, tone: "bg-emerald-500" },
     { label: "Pending", value: stats?.pending_profiles || 0, tone: "bg-amber-500" },
     { label: "Quiz", value: stats?.quiz_submitted_count || 0, tone: "bg-indigo-500" },
+    { label: "Assessment", value: stats?.assessment_completed_count || 0, tone: "bg-cyan-500" },
     { label: "Ready", value: stats?.recommendation_ready_count || 0, tone: "bg-rose-500" },
   ];
 
@@ -122,12 +148,13 @@ export default function AdminDashboard() {
     >
       <AdminToast type={toast.type} message={toast.message} onClose={() => setToast({ type: "error", message: "" })} />
 
-      <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+      <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
         {[
           ["Total Students", stats?.total_students, "sky"],
           ["Completed Profiles", stats?.completed_profiles, "emerald"],
           ["Pending Profiles", stats?.pending_profiles, "amber"],
           ["Quiz Submitted", stats?.quiz_submitted_count, "violet"],
+          ["Assessment Completed", stats?.assessment_completed_count, "cyan"],
           ["Recommendation Ready", stats?.recommendation_ready_count, "rose"],
         ].map(([label, value, tone]) => (
           <article key={label} className={`admin-kpi-lite admin-tone-${tone} rounded-2xl p-4`}>
@@ -168,7 +195,8 @@ export default function AdminDashboard() {
             <div
               className="h-44 w-44 rounded-full relative"
               style={{
-                background: `conic-gradient(#0ea5e9 0% ${loading ? 0 : readinessRatio}%, #e2e8f0 ${loading ? 0 : readinessRatio}% 100%)`,
+                background: `conic-gradient(#0ea5e9 0% ${pieAnimatedRatio}%, #e2e8f0 ${pieAnimatedRatio}% 100%)`,
+                transition: "transform 320ms ease",
               }}
             >
               <div className="absolute inset-[18%] rounded-full bg-white flex items-center justify-center text-center">

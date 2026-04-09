@@ -12,7 +12,6 @@ export default function PersonalizedAssessment() {
   const [status, setStatus] = useState(null);
   const [assessment, setAssessment] = useState(null);
   const [submissionResult, setSubmissionResult] = useState(null);
-  const [uploadedCertificates, setUploadedCertificates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [startingAssessment, setStartingAssessment] = useState(false);
   const [submittingAssessment, setSubmittingAssessment] = useState(false);
@@ -42,7 +41,7 @@ export default function PersonalizedAssessment() {
       setLoading(true);
       setError("");
 
-      const [meRes, statusRes, latestResultRes, certificatesRes] = await Promise.all([
+      const [meRes, statusRes, latestResultRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/v1/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
@@ -50,9 +49,6 @@ export default function PersonalizedAssessment() {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch(`${API_BASE_URL}/api/v1/skill-verification/assessment/latest-result`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_BASE_URL}/api/v1/skill-verification/certifications/my`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
@@ -76,13 +72,6 @@ export default function PersonalizedAssessment() {
         setSubmissionResult(latestResultPayload);
       } else {
         setSubmissionResult(null);
-      }
-
-      if (certificatesRes.ok) {
-        const certificatePayload = await certificatesRes.json();
-        setUploadedCertificates(Array.isArray(certificatePayload) ? certificatePayload : []);
-      } else {
-        setUploadedCertificates([]);
       }
     } catch (err) {
       setError(err.message || "Failed to load personalized assessment page.");
@@ -401,24 +390,6 @@ export default function PersonalizedAssessment() {
             This assessment is generated only from your detected certificate skill areas and monitors behavior for fairness.
           </p>
         </section>
-
-        {uploadedCertificates.length > 0 && (
-          <section className="glass-panel rounded-2xl p-6 space-y-3">
-            <h2 className="modern-section-title">Uploaded Certifications</h2>
-            <div className="space-y-2 max-h-[240px] overflow-auto pr-1">
-              {uploadedCertificates.map((item, idx) => (
-                <div key={`${item.id || "cert"}-${idx}`} className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="text-sm font-semibold text-slate-900">{item.title || "Untitled Certificate"}</p>
-                  <p className="text-xs text-slate-600 mt-1">Provider: {item.provider || "-"}</p>
-                  <p className="text-xs text-slate-600 mt-1">{item.description || "No description"}</p>
-                  {item.created_at && (
-                    <p className="text-[11px] text-slate-500 mt-1">Uploaded: {new Date(item.created_at).toLocaleString()}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {submissionResult ? (
           <section className="glass-panel rounded-2xl p-6 space-y-5">
