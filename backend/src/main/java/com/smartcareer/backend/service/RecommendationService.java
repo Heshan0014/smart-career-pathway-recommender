@@ -6,9 +6,12 @@ import com.smartcareer.backend.dto.RecommendationOptionResponse;
 import com.smartcareer.backend.dto.RecommendationResponse;
 import com.smartcareer.backend.dto.UserResponse;
 import com.smartcareer.backend.entity.QuizSubmissionEntity;
+import com.smartcareer.backend.entity.SkillLevel;
 import com.smartcareer.backend.entity.UserEntity;
+import com.smartcareer.backend.entity.VerifiedSkillEntity;
 import com.smartcareer.backend.repository.QuizSubmissionRepository;
 import com.smartcareer.backend.repository.UserRepository;
+import com.smartcareer.backend.repository.VerifiedSkillRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,17 +31,20 @@ public class RecommendationService {
     private final AuthService authService;
     private final QuizSubmissionRepository quizSubmissionRepository;
     private final UserRepository userRepository;
+    private final VerifiedSkillRepository verifiedSkillRepository;
     private final ObjectMapper objectMapper;
 
     public RecommendationService(
         AuthService authService,
         QuizSubmissionRepository quizSubmissionRepository,
         UserRepository userRepository,
+        VerifiedSkillRepository verifiedSkillRepository,
         ObjectMapper objectMapper
     ) {
         this.authService = authService;
         this.quizSubmissionRepository = quizSubmissionRepository;
         this.userRepository = userRepository;
+        this.verifiedSkillRepository = verifiedSkillRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -60,6 +66,11 @@ public class RecommendationService {
 
         JsonNode answers = parseAnswers(submission.getAnswersJson());
         Map<String, Integer> scores = initializeScores();
+        List<VerifiedSkillEntity> verifiedSkills = verifiedSkillRepository.findByUserIdOrderBySkillNameAsc(user.getId());
+
+        if (!verifiedSkills.isEmpty()) {
+            scoreFromVerifiedSkills(scores, verifiedSkills);
+        }
 
         scoreFromText(scores, extractAnswersText(answers));
         scoreFromProfile(scores, user);
@@ -73,7 +84,7 @@ public class RecommendationService {
         int secondScore = sorted.size() > 1 ? sorted.get(1).getValue() : 0;
         int confidence = topScore == 0 ? 0 : Math.max(55, Math.min(95, 60 + (topScore - secondScore) * 8));
 
-        List<String> reasons = buildReasons(primaryPath, user, answers);
+        List<String> reasons = buildReasons(primaryPath, user, answers, verifiedSkills);
         List<String> nextSteps = buildNextSteps(primaryPath);
 
         List<RecommendationOptionResponse> alternatives = sorted.stream()
@@ -87,7 +98,7 @@ public class RecommendationService {
 
         String summary = String.format(
             Locale.ROOT,
-            "Based on your quiz and profile, %s is your strongest fit right now (confidence %d%%).",
+            "Based on your verified skills, quiz, and profile, %s is your strongest fit right now (confidence %d%%).",
             primaryPath,
             confidence
         );
@@ -183,6 +194,39 @@ public class RecommendationService {
         }
     }
 
+    private void scoreFromVerifiedSkills(Map<String, Integer> scores, List<VerifiedSkillEntity> verifiedSkills) {
+        for (VerifiedSkillEntity skill : verifiedSkills) {
+            int weight = levelWeight(skill.getVerifiedLevel());
+            String normalized = skill.getSkillName() == null ? "" : skill.getSkillName().toLowerCase(Locale.ROOT);
+
+            if (normalized.contains("python") || normalized.contains("web") || normalized.contains("software")) {
+                addScore(scores, "Software Engineering", weight);
+            }
+            if (normalized.contains("data")) {
+                addScore(scores, "Data Science / AI", weight);
+            }
+            if (normalized.contains("ui") || normalized.contains("ux") || normalized.contains("design")) {
+                addScore(scores, "UI/UX Design", weight);
+            }
+            if (normalized.contains("cyber") || normalized.contains("security")) {
+                addScore(scores, "Cybersecurity", weight);
+            }
+            if (normalized.contains("cloud") || normalized.contains("network")) {
+                addScore(scores, "Networking & Cloud", weight);
+            }
+        }
+    }
+
+    private int levelWeight(SkillLevel level) {
+        if (level == SkillLevel.ADVANCED) {
+            return 9;
+        }
+        if (level == SkillLevel.INTERMEDIATE) {
+            return 6;
+        }
+        return 3;
+    }
+
     private void scoreProfileField(Map<String, Integer> scores, String value, int weight) {
         if (value == null || value.isBlank()) {
             return;
@@ -215,9 +259,13 @@ public class RecommendationService {
         scores.put(career, scores.getOrDefault(career, 0) + amount);
     }
 
-    private List<String> buildReasons(String primaryPath, UserEntity user, JsonNode answers) {
+    private List<String> buildReasons(String primaryPath, UserEntity user, JsonNode answers, List<VerifiedSkillEntity> verifiedSkills) {
         List<String> reasons = new ArrayList<>();
         reasons.add("Your quiz responses align most strongly with " + primaryPath + ".");
+
+        if (!verifiedSkills.isEmpty()) {
+            reasons.add("Your verified skill assessment was prioritized over self-reported data.");
+        }
 
         if (user.getFavoriteField() != null && !user.getFavoriteField().isBlank()) {
             reasons.add("Your preferred field (" + user.getFavoriteField() + ") supports this pathway.");

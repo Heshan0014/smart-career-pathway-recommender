@@ -5,6 +5,10 @@ import { StudentBanner, StudentInlineSpinner } from "../components/student/Stude
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
+const normalizeRole = (value) => (typeof value === "string" ? value.trim().toUpperCase() : "");
+
+const getUserRole = (user) => normalizeRole(user?.user_role || user?.userRole);
+
 export default function Login() {
   const location = useLocation();
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -87,7 +91,7 @@ export default function Login() {
       if (response.ok) {
         const data = await response.json();
 
-        const returnedRole = data?.user?.user_role;
+        const returnedRole = getUserRole(data?.user);
         if (!isAdminMode && returnedRole === "ADMIN") {
           localStorage.removeItem("token");
           localStorage.removeItem("user");
@@ -104,7 +108,7 @@ export default function Login() {
 
         localStorage.setItem("token", data.access_token);
         localStorage.setItem("user", JSON.stringify(data.user));
-        navigate(isAdminMode ? "/admin/dashboard" : "/dashboard", {
+        navigate(returnedRole === "ADMIN" ? "/admin/dashboard" : "/dashboard", {
           replace: true,
           state: { showAppLoader: true },
         });

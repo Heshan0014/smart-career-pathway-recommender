@@ -318,83 +318,6 @@ function getCompletionTheme(percentage) {
   };
 }
 
-function buildFallbackRecommendation(profile, answers) {
-  const scores = {
-    "Software Engineering": 0,
-    "Data Science / AI": 0,
-    "UI/UX Design": 0,
-    "Cybersecurity": 0,
-    "Networking & Cloud": 0,
-  };
-
-  const addByKeywords = (text, career, keywords, weight) => {
-    const normalized = String(text || "").toLowerCase();
-    if (keywords.some((keyword) => normalized.includes(keyword))) {
-      scores[career] += weight;
-    }
-  };
-
-  Object.values(answers || {}).forEach((entry) => {
-    const answerValues = Array.isArray(entry?.answers)
-      ? entry.answers
-      : entry?.answer
-        ? [entry.answer]
-        : [];
-    const otherText = entry?.otherChoice || "";
-
-    [...answerValues, otherText].forEach((text) => {
-      addByKeywords(text, "Software Engineering", ["software", "program", "coding", "developer", "web", "app"], 2);
-      addByKeywords(text, "Data Science / AI", ["data", "ai", "machine", "analytics", "analysis"], 2);
-      addByKeywords(text, "UI/UX Design", ["design", "ui", "ux", "creative"], 2);
-      addByKeywords(text, "Cybersecurity", ["cyber", "security", "hack", "vulnerab"], 2);
-      addByKeywords(text, "Networking & Cloud", ["network", "cloud", "server", "infrastructure"], 2);
-    });
-  });
-
-  const favoriteField = profile?.favorite_field || "";
-  const favoriteSubject = profile?.favorite_subject || "";
-
-  addByKeywords(favoriteField, "Software Engineering", ["software", "program", "web", "app"], 3);
-  addByKeywords(favoriteField, "Data Science / AI", ["data", "ai", "machine"], 3);
-  addByKeywords(favoriteField, "UI/UX Design", ["design", "ui", "ux"], 3);
-  addByKeywords(favoriteField, "Cybersecurity", ["cyber", "security"], 3);
-  addByKeywords(favoriteField, "Networking & Cloud", ["network", "cloud", "server"], 3);
-
-  addByKeywords(favoriteSubject, "Software Engineering", ["software", "program", "web", "app"], 2);
-  addByKeywords(favoriteSubject, "Data Science / AI", ["data", "ai", "machine"], 2);
-  addByKeywords(favoriteSubject, "UI/UX Design", ["design", "ui", "ux"], 2);
-  addByKeywords(favoriteSubject, "Cybersecurity", ["cyber", "security"], 2);
-  addByKeywords(favoriteSubject, "Networking & Cloud", ["network", "cloud", "server"], 2);
-
-  const ranked = Object.entries(scores)
-    .sort((a, b) => b[1] - a[1])
-    .map(([career_path, score], index, arr) => {
-      const top = arr[0]?.[1] || 0;
-      const ratio = top === 0 ? 0 : score / top;
-      const fit_label = ratio >= 0.9 ? "Strong" : ratio >= 0.65 ? "Moderate" : "Emerging";
-      return { career_path, score, fit_label, index };
-    });
-
-  const primary = ranked[0] || { career_path: "Software Engineering", score: 0 };
-
-  return {
-    primary_path: primary.career_path,
-    recommendation_summary: `Based on your current profile and quiz responses, ${primary.career_path} appears to be your best-fit path right now.`,
-    reasons: [
-      "Your quiz preferences align with this pathway.",
-      "Your profile interests and selected field strengthen this match.",
-      "You can refine this result further by keeping your profile updated.",
-    ],
-    alternatives: ranked.slice(0, 3).map(({ career_path, score, fit_label }) => ({ career_path, score, fit_label })),
-    next_steps: [
-      "Build one practical mini project in this career path.",
-      "Follow a 4-6 week learning roadmap and track your progress weekly.",
-      "Re-run recommendations after updating your profile and quiz responses.",
-    ],
-    generated_at: new Date().toISOString(),
-  };
-}
-
 export default function Profile() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
@@ -413,10 +336,8 @@ export default function Profile() {
   const [isQuizSummaryOpen, setIsQuizSummaryOpen] = useState(false);
   const [quizSubmittedAt, setQuizSubmittedAt] = useState("");
   const [isQuizSubmitted, setIsQuizSubmitted] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState(null);
   const [isQuizSubmitting, setIsQuizSubmitting] = useState(false);
-  const [recommendationResult, setRecommendationResult] = useState(null);
-  const [isGeneratingRecommendation, setIsGeneratingRecommendation] = useState(false);
-  const [isRecommendationOpen, setIsRecommendationOpen] = useState(false);
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [studentUnreadCount, setStudentUnreadCount] = useState(0);
@@ -430,9 +351,14 @@ export default function Profile() {
   const completionPercentage = completionData.percentage;
   const isProfileReady = completionPercentage >= 100;
   const completionTheme = getCompletionTheme(completionPercentage);
-  const recommendationRequiredCompletion = profile?.recommendation_required_completion_percentage ?? 80;
-  const isRecommendationEligible = Boolean(profile?.recommendation_eligible);
   const isQuizSubmittedForGate = Boolean(profile?.quiz_submitted) || isQuizSubmitted;
+  const isStage2Done = Boolean(verificationStatus?.certification_stage_completed) || Boolean(verificationStatus?.assessment_stage_completed);
+  const isStage3Done = Boolean(verificationStatus?.assessment_stage_completed);
+  const stageProgress = [
+    { id: 1, label: "Stage 1", done: isQuizSubmittedForGate },
+    { id: 2, label: "Stage 2", done: isStage2Done },
+    { id: 3, label: "Stage 3", done: isStage3Done },
+  ];
 
   const markTouched = (fieldName) => {
     setTouchedFields((prev) => ({ ...prev, [fieldName]: true }));
@@ -478,26 +404,45 @@ export default function Profile() {
         setFieldErrors(getFieldErrors(mapped));
         localStorage.setItem("user", JSON.stringify(data));
 
-        const quizResponse = await fetch(`${API_BASE_URL}/api/v1/quiz/me`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        try {
+          const quizResponse = await fetch(`${API_BASE_URL}/api/v1/quiz/me`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
 
-        if (quizResponse.ok) {
-          const quizData = await quizResponse.json();
-          setQuizAnswers(quizData.answers || {});
-          setQuizSubmittedAt(quizData.submitted_at || "");
-          setIsQuizSubmitted(Boolean(quizData.answers));
-        } else if (quizResponse.status === 404) {
-          setQuizAnswers({});
-          setQuizSubmittedAt("");
-          setIsQuizSubmitted(false);
-        } else if (quizResponse.status === 401 || quizResponse.status === 403) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          navigate("/login");
-          return;
+          if (quizResponse.ok) {
+            const quizData = await quizResponse.json();
+            setQuizAnswers(quizData.answers || {});
+            setQuizSubmittedAt(quizData.submitted_at || "");
+            setIsQuizSubmitted(Boolean(quizData.answers));
+          } else if (quizResponse.status === 404) {
+            setQuizAnswers({});
+            setQuizSubmittedAt("");
+            setIsQuizSubmitted(false);
+          } else if (quizResponse.status === 401 || quizResponse.status === 403) {
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            navigate("/login");
+            return;
+          }
+        } catch (quizErr) {
+          console.error("Failed to load quiz details:", quizErr);
+        }
+
+        try {
+          const verificationResponse = await fetch(`${API_BASE_URL}/api/v1/skill-verification/me`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (verificationResponse.ok) {
+            const verificationData = await verificationResponse.json();
+            setVerificationStatus(verificationData);
+          }
+        } catch (verificationErr) {
+          console.error("Failed to load verification status:", verificationErr);
         }
       } catch (err) {
         setError("Failed to load profile details.");
@@ -780,86 +725,16 @@ export default function Profile() {
       setQuizSubmittedAt(responseData.submitted_at || "");
       setIsQuizSubmitted(true);
 
-      const meResponse = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (meResponse.ok) {
-        const meData = await meResponse.json();
-        setProfile(meData);
-        localStorage.setItem("user", JSON.stringify(meData));
-      }
+      setProfile((prev) => (prev ? { ...prev, quiz_submitted: true } : prev));
+      setVerificationStatus((prev) => ({ ...(prev || {}), quiz_completed: true }));
 
       setIsQuizOpen(false);
       setIsQuizSummaryOpen(true);
-      setSuccess("Quiz submitted successfully. You can review or edit it anytime.");
+      setSuccess("Quiz completed successfully. You can review or edit it anytime.");
     } catch (err) {
       setError(err.message || "Failed to submit quiz.");
     } finally {
       setIsQuizSubmitting(false);
-    }
-  };
-
-  const handleGenerateRecommendation = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      navigate("/login");
-      return;
-    }
-
-    if (!isRecommendationEligible) {
-      setSuccess("");
-      setError("Recommendations are locked. Complete profile and submit quiz first.");
-      return;
-    }
-
-    try {
-      setIsGeneratingRecommendation(true);
-      setError("");
-      setSuccess("");
-
-      const response = await fetch(`${API_BASE_URL}/api/v1/recommendations/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const responseData = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        if (response.status === 401) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          navigate("/login");
-          return;
-        }
-
-        if (response.status === 404 || response.status >= 500) {
-          const fallback = buildFallbackRecommendation(profile, quizAnswers);
-          setRecommendationResult(fallback);
-          setIsRecommendationOpen(true);
-          setSuccess("Recommendation generated with local prototype logic.");
-          return;
-        }
-
-        throw new Error(responseData.detail || "Failed to generate recommendation.");
-      }
-
-      setRecommendationResult(responseData);
-      setIsRecommendationOpen(true);
-      setSuccess("Recommendation generated successfully.");
-    } catch (err) {
-      const fallback = buildFallbackRecommendation(profile, quizAnswers);
-      if (fallback) {
-        setRecommendationResult(fallback);
-        setIsRecommendationOpen(true);
-        setSuccess("Recommendation generated with local prototype logic.");
-      } else {
-        setError(err.message || "Failed to generate recommendation.");
-      }
-    } finally {
-      setIsGeneratingRecommendation(false);
     }
   };
 
@@ -896,7 +771,11 @@ export default function Profile() {
             action={
               <button
                 type="button"
-                onClick={() => navigate("/login")}
+                onClick={() => {
+                  localStorage.removeItem("token");
+                  localStorage.removeItem("user");
+                  navigate("/login", { replace: true });
+                }}
                 className="modern-btn-primary px-4 py-2 rounded-xl"
               >
                 Back to Login
@@ -1003,6 +882,7 @@ export default function Profile() {
                 Quiz Summary
               </button>
             )}
+
           </div>
         </div>
 
@@ -1224,29 +1104,32 @@ export default function Profile() {
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white/70 p-4">
-              <p className="text-sm font-semibold text-slate-800">Recommendation Access Gate</p>
-              <p className="text-xs text-slate-600 mt-2">
-                Requirements: profile completion at least {recommendationRequiredCompletion}% and quiz submitted.
-              </p>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                <div className={`rounded-lg px-3 py-2 ${completionPercentage >= recommendationRequiredCompletion ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
-                  Profile completion: {completionPercentage}%
-                </div>
-                <div className={`rounded-lg px-3 py-2 ${isQuizSubmittedForGate ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
-                  Quiz submitted: {isQuizSubmittedForGate ? "Yes" : "No"}
-                </div>
+              <p className="text-sm font-semibold text-slate-800 mb-3">Verification Stages</p>
+              <div className="flex items-center justify-between gap-2">
+                {stageProgress.map((stage, index) => (
+                  <React.Fragment key={stage.id}>
+                    <div className="flex flex-col items-center min-w-[60px]">
+                      <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-semibold ${stage.done ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-300 text-slate-600"}`}>
+                        {stage.id}
+                      </div>
+                      <span className="text-[10px] text-slate-600 mt-1">{stage.label}</span>
+                    </div>
+                    {index < stageProgress.length - 1 && (
+                      <div className={`flex-1 h-[2px] ${stageProgress[index].done ? "bg-emerald-500" : "bg-slate-300"}`} />
+                    )}
+                  </React.Fragment>
+                ))}
               </div>
 
-              <button
-                type="button"
-                onClick={handleGenerateRecommendation}
-                disabled={isGeneratingRecommendation}
-                className={`mt-4 w-full py-2.5 rounded-xl text-white font-semibold transition-colors ${
-                  isRecommendationEligible ? "modern-btn-primary" : "bg-gray-400"
-                }`}
-              >
-                {isGeneratingRecommendation ? "Generating..." : "Generate Recommendation"}
-              </button>
+              {isQuizSubmittedForGate && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/skill-verification")}
+                  className="mt-4 w-full modern-btn-primary py-2 rounded-xl"
+                >
+                  Step 2
+                </button>
+              )}
             </div>
           </section>
         </div>
@@ -1390,72 +1273,6 @@ export default function Profile() {
                   Edit Quiz
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isRecommendationOpen && recommendationResult && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto glass-panel rounded-2xl">
-            <div className="sticky top-0 bg-white/90 backdrop-blur border-b border-emerald-100 p-5 flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Your Recommendation</h3>
-                {recommendationResult.generated_at && (
-                  <p className="text-xs text-gray-500 mt-1">Generated: {new Date(recommendationResult.generated_at).toLocaleString()}</p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsRecommendationOpen(false)}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100/80"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
-                <p className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Primary Recommendation</p>
-                <p className="text-lg font-bold text-emerald-900 mt-1">{recommendationResult.primary_path}</p>
-                <p className="text-sm text-emerald-800 mt-1">{recommendationResult.recommendation_summary}</p>
-              </div>
-
-              {Array.isArray(recommendationResult.reasons) && recommendationResult.reasons.length > 0 && (
-                <div className="rounded-xl border border-slate-200 bg-white/80 p-4">
-                  <p className="text-sm font-semibold text-slate-800">Why this path</p>
-                  <ul className="mt-2 text-sm text-slate-700 space-y-1">
-                    {recommendationResult.reasons.map((reason) => (
-                      <li key={reason}>- {reason}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {Array.isArray(recommendationResult.alternatives) && recommendationResult.alternatives.length > 0 && (
-                <div className="rounded-xl border border-slate-200 bg-white/80 p-4">
-                  <p className="text-sm font-semibold text-slate-800">Top Paths</p>
-                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
-                    {recommendationResult.alternatives.map((option) => (
-                      <div key={option.career_path} className="rounded-lg border border-emerald-100 bg-white px-3 py-2">
-                        <p className="text-sm font-semibold text-slate-800">{option.career_path}</p>
-                        <p className="text-xs text-slate-600 mt-1">Score: {option.score} ({option.fit_label})</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {Array.isArray(recommendationResult.next_steps) && recommendationResult.next_steps.length > 0 && (
-                <div className="rounded-xl border border-slate-200 bg-white/80 p-4">
-                  <p className="text-sm font-semibold text-slate-800">Next Steps</p>
-                  <ul className="mt-2 text-sm text-slate-700 space-y-1">
-                    {recommendationResult.next_steps.map((step) => (
-                      <li key={step}>- {step}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           </div>
         </div>

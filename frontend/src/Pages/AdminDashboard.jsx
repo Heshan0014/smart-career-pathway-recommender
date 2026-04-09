@@ -61,6 +61,8 @@ export default function AdminDashboard() {
         throw new Error(statsPayload.detail || "Failed to load dashboard stats.");
       }
 
+      setStats(statsPayload);
+
       const studentsResponse = await fetch(`${API_BASE_URL}/api/v1/admin/students?page=0&size=6`, { headers });
       if (studentsResponse.status === 401 || studentsResponse.status === 403) {
         forceLogout("Your admin session has expired.");
@@ -68,10 +70,10 @@ export default function AdminDashboard() {
       }
       const studentsPayload = await studentsResponse.json().catch(() => ({}));
       if (!studentsResponse.ok) {
+        setQuickStudents([]);
         throw new Error(studentsPayload.detail || "Failed to load student snapshot.");
       }
 
-      setStats(statsPayload);
       setQuickStudents(Array.isArray(studentsPayload.items) ? studentsPayload.items : []);
     } catch (err) {
       setToast({ type: "error", message: err.message || "Failed to load admin dashboard." });
@@ -92,6 +94,15 @@ export default function AdminDashboard() {
   const readinessRatio = stats?.total_students
     ? Math.round(((stats?.recommendation_ready_count || 0) * 100) / stats.total_students)
     : 0;
+
+  const completionChartData = [
+    { label: "Completed", value: stats?.completed_profiles || 0, tone: "bg-emerald-500" },
+    { label: "Pending", value: stats?.pending_profiles || 0, tone: "bg-amber-500" },
+    { label: "Quiz", value: stats?.quiz_submitted_count || 0, tone: "bg-indigo-500" },
+    { label: "Ready", value: stats?.recommendation_ready_count || 0, tone: "bg-rose-500" },
+  ];
+
+  const maxChartValue = Math.max(...completionChartData.map((item) => item.value), 1);
 
   return (
     <AdminLayout
@@ -126,18 +137,46 @@ export default function AdminDashboard() {
         ))}
       </section>
 
-      <section className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-4">
+      <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <article className="admin-lite-card rounded-2xl p-5 md:p-6">
-          <h3 className="text-lg font-semibold text-slate-900">Readiness Overview</h3>
+          <h3 className="text-lg font-semibold text-slate-900">Profile Completion Bar Chart</h3>
+          <p className="text-sm text-slate-600 mt-1">Quick visual of completion and recommendation milestones.</p>
+
+          <div className="mt-5 space-y-4">
+            {completionChartData.map((item) => {
+              const width = Math.max(Math.round((item.value / maxChartValue) * 100), item.value > 0 ? 8 : 0);
+              return (
+                <div key={item.label}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600">{item.label}</span>
+                    <span className="font-semibold text-slate-900">{loading ? "..." : item.value.toLocaleString()}</span>
+                  </div>
+                  <div className="w-full h-2.5 rounded-full bg-slate-200 mt-2 overflow-hidden">
+                    <div className={`h-2.5 rounded-full ${item.tone}`} style={{ width: `${loading ? 0 : width}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </article>
+
+        <article className="admin-lite-card rounded-2xl p-5 md:p-6">
+          <h3 className="text-lg font-semibold text-slate-900">Readiness Pie Chart</h3>
           <p className="text-sm text-slate-600 mt-1">Students ready for recommendations based on completion gate.</p>
 
-          <div className="mt-5">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-600">Readiness ratio</span>
-              <span className="font-semibold text-slate-900">{loading ? "..." : `${readinessRatio}%`}</span>
-            </div>
-            <div className="w-full h-3 rounded-full bg-slate-200 mt-2 overflow-hidden">
-              <div className="h-3 rounded-full admin-progress-grad" style={{ width: `${readinessRatio}%` }} />
+          <div className="mt-5 flex items-center justify-center">
+            <div
+              className="h-44 w-44 rounded-full relative"
+              style={{
+                background: `conic-gradient(#0ea5e9 0% ${loading ? 0 : readinessRatio}%, #e2e8f0 ${loading ? 0 : readinessRatio}% 100%)`,
+              }}
+            >
+              <div className="absolute inset-[18%] rounded-full bg-white flex items-center justify-center text-center">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Ready</p>
+                  <p className="text-2xl font-bold text-slate-900">{loading ? "..." : `${readinessRatio}%`}</p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -153,7 +192,7 @@ export default function AdminDashboard() {
           </div>
         </article>
 
-        <article className="admin-lite-card rounded-2xl p-5 md:p-6">
+        <article className="admin-lite-card rounded-2xl p-5 md:p-6 xl:col-span-1">
           <h3 className="text-lg font-semibold text-slate-900">Recent Student Snapshot</h3>
           <p className="text-sm text-slate-600 mt-1">Quick look at the latest student status updates.</p>
 

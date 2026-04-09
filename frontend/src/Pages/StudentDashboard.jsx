@@ -92,14 +92,18 @@ export default function StudentDashboard() {
         setProfile(meData);
         localStorage.setItem("user", JSON.stringify(meData));
 
-        const quizResponse = await fetch(`${API_BASE_URL}/api/v1/quiz/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        try {
+          const quizResponse = await fetch(`${API_BASE_URL}/api/v1/quiz/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
-        if (quizResponse.ok) {
-          const quizData = await quizResponse.json();
-          setQuizSubmittedAt(quizData.submitted_at || "");
-        } else if (quizResponse.status === 404) {
+          if (quizResponse.ok) {
+            const quizData = await quizResponse.json().catch(() => ({}));
+            setQuizSubmittedAt(quizData.submitted_at || "");
+          } else if (quizResponse.status === 404) {
+            setQuizSubmittedAt("");
+          }
+        } catch (quizError) {
           setQuizSubmittedAt("");
         }
       } catch (err) {
@@ -183,10 +187,14 @@ export default function StudentDashboard() {
             action={
               <button
                 type="button"
-                onClick={() => navigate("/profile")}
+                onClick={() => {
+                  localStorage.removeItem("token");
+                  localStorage.removeItem("user");
+                  navigate("/login", { replace: true });
+                }}
                 className="modern-btn-primary px-4 py-2 rounded-xl"
               >
-                Open Profile
+                Back to Login
               </button>
             }
           />
@@ -242,26 +250,29 @@ export default function StudentDashboard() {
               {recommendationEligible ? "Ready" : "Locked"}
             </p>
             <p className="text-xs text-slate-500 mt-2">
-              Needs {requiredCompletion}% profile completion + submitted quiz
+              Needs {requiredCompletion}% profile + quiz + skill verification
             </p>
             <button
               type="button"
-              onClick={() => navigate("/profile")}
+              onClick={() => navigate("/skill-verification")}
               className="mt-4 text-sm font-semibold text-emerald-700 hover:text-emerald-800"
             >
-              Check Requirements
+              Open Verification Flow
             </button>
           </div>
         </section>
 
         <section className="glass-panel rounded-2xl p-6 dashboard-readiness-card">
           <h2 className="modern-section-title">Readiness Checklist</h2>
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
             <div className={`rounded-xl px-3 py-2 ${progress >= requiredCompletion ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-800 border border-amber-200"}`}>
               Profile completion {progress >= requiredCompletion ? "met" : "not met"}: {progress}% / {requiredCompletion}%
             </div>
             <div className={`rounded-xl px-3 py-2 ${quizSubmitted ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-800 border border-amber-200"}`}>
               Quiz submission {quizSubmitted ? "met" : "not met"}
+            </div>
+            <div className={`rounded-xl px-3 py-2 ${recommendationEligible ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-amber-50 text-amber-800 border border-amber-200"}`}>
+              Skill verification {recommendationEligible ? "met" : "required"}
             </div>
           </div>
 

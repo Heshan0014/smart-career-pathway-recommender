@@ -3,6 +3,8 @@ import Home from './Pages/Home';
 import Login from './Pages/Login';
 import Signup from './Pages/Signup';
 import Profile from './Pages/Profile';
+import SkillVerification from './Pages/SkillVerification';
+import PersonalizedAssessment from './Pages/PersonalizedAssessment';
 import StudentDashboard from './Pages/StudentDashboard';
 import AdminDashboard from './Pages/AdminDashboard';
 import AdminStudents from './Pages/AdminStudents';
@@ -61,6 +63,8 @@ function AppRoutes() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/skill-verification" element={<SkillVerification />} />
+        <Route path="/personalized-assessment" element={<PersonalizedAssessment />} />
         <Route path="/dashboard" element={<StudentDashboard />} />
         <Route path="/admin/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
         <Route path="/admin/students" element={<AdminRoute><AdminStudents /></AdminRoute>} />

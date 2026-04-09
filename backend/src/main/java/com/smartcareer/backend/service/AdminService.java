@@ -96,7 +96,7 @@ public class AdminService {
         }
 
         List<StudentSnapshot> snapshots = buildStudentSnapshots();
-        List<StudentSnapshot> filtered = applyFilters(snapshots, search, profileStatus, quizStatus, recommendationStatus);
+        List<StudentSnapshot> filtered = new ArrayList<>(applyFilters(snapshots, search, profileStatus, quizStatus, recommendationStatus));
 
         filtered.sort(Comparator
             .comparing(StudentSnapshot::lastUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
@@ -183,7 +183,7 @@ public class AdminService {
 
     private List<StudentSnapshot> buildStudentSnapshots() {
         List<UserEntity> students = userRepository.findAll().stream()
-            .filter(user -> user.getUserRole() == UserRole.STUDENT)
+            .filter(user -> user.getUserRole() == null || user.getUserRole() == UserRole.STUDENT)
             .toList();
 
         List<QuizSubmissionEntity> submissions = quizSubmissionRepository.findAll();

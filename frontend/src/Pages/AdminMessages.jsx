@@ -16,9 +16,6 @@ export default function AdminMessages() {
   const [replyModal, setReplyModal] = useState({ open: false, messageId: null });
   const [replyText, setReplyText] = useState("");
   const [replying, setReplying] = useState(false);
-  const [blocking, setBlocking] = useState(false);
-  const [blockConfirm, setBlockConfirm] = useState({ open: false, message: null });
-  const [blockError, setBlockError] = useState("");
 
   const showToast = useCallback((message, type = "info") => {
     setToast({ visible: true, message, type });
@@ -92,79 +89,6 @@ export default function AdminMessages() {
     setReplyText("");
     setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, isRead: true } : m)));
     loadUnreadCount(token);
-  };
-
-  const handleBlockUser = async (message) => {
-    if (!message) return;
-
-    setBlockError("");
-    setBlocking(true);
-    try {
-      const response = await fetch(
-        `http://localhost:8001/api/v1/messages/admin/students/${message.studentId}/block-user`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            reason: "Admin blocked you for repeated message activity. If you want to contact admin, send mail to adminnextstepai@gmail.com.",
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const updatedMessage = await response.json();
-        const blockedStudentId = updatedMessage.studentId || message.studentId;
-        setMessages((prev) => prev.map((item) => (
-          item.studentId === blockedStudentId ? { ...item, studentBlocked: true } : item
-        )));
-        setSelectedMessage((prev) => (prev && prev.studentId === blockedStudentId ? { ...prev, studentBlocked: true } : prev));
-        showToast("Student blocked successfully", "success");
-      } else {
-        setBlockError("Failed to block student");
-        showToast("Failed to block student", "error");
-      }
-    } catch (err) {
-      setBlockError("Failed to block student");
-      showToast("Error: " + err.message, "error");
-    } finally {
-      setBlocking(false);
-    }
-  };
-
-  const handleUnblockUser = async (message) => {
-    if (!message) return;
-
-    setBlocking(true);
-    try {
-      const response = await fetch(
-        `http://localhost:8001/api/v1/messages/admin/students/${message.studentId}/unblock-user`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const updatedMessage = await response.json();
-        const unblockedStudentId = updatedMessage.studentId || message.studentId;
-        setMessages((prev) => prev.map((item) => (
-          item.studentId === unblockedStudentId ? { ...item, studentBlocked: false } : item
-        )));
-        setSelectedMessage((prev) => (prev && prev.studentId === unblockedStudentId ? { ...prev, studentBlocked: false } : prev));
-        showToast("Student unblocked successfully", "success");
-      } else {
-        showToast("Failed to unblock student", "error");
-      }
-    } catch (err) {
-      showToast("Error: " + err.message, "error");
-    } finally {
-      setBlocking(false);
-    }
   };
 
   const handleSendReply = async () => {
@@ -299,31 +223,6 @@ export default function AdminMessages() {
                       >
                         Reply
                       </button>
-                      {message.studentBlocked ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleUnblockUser(message);
-                          }}
-                          disabled={blocking}
-                          className="px-3 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 transition flex items-center gap-1 disabled:opacity-50"
-                        >
-                          Unblock User
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setBlockConfirm({ open: true, message });
-                          }}
-                          disabled={blocking}
-                          className="px-3 py-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition flex items-center gap-1 disabled:opacity-50"
-                        >
-                          Block User
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -395,11 +294,6 @@ export default function AdminMessages() {
                   <h3 className="font-semibold text-slate-900 mb-2">From Student</h3>
                   <p className="text-slate-700">{selectedMessage.studentName}</p>
                   <p className="text-sm text-slate-600">{selectedMessage.studentEmail}</p>
-                  {selectedMessage.studentBlocked && (
-                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                      This student is blocked from sending messages.
-                    </div>
-                  )}
                 </div>
 
                 {/* Original Message */}
@@ -470,70 +364,6 @@ export default function AdminMessages() {
                       )}
                     </button>
                   )}
-                  {selectedMessage.studentBlocked ? (
-                    <button
-                      type="button"
-                      onClick={() => handleUnblockUser(selectedMessage)}
-                      disabled={blocking}
-                      className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {blocking ? "Unblocking..." : "Unblock User"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setBlockConfirm({ open: true, message: selectedMessage })}
-                      disabled={blocking}
-                      className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {blocking ? "Blocking..." : "Block User"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {blockConfirm.open && blockConfirm.message && !blockConfirm.message.studentBlocked && (
-        <>
-          <div className="fixed inset-0 z-[70] bg-red-950/40 backdrop-blur-md" onClick={() => setBlockConfirm({ open: false, message: null })}></div>
-          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white shadow-2xl overflow-hidden">
-              <div className="bg-red-600 px-5 py-4 text-white">
-                <h3 className="text-lg font-bold">Are you sure you want to block this user?</h3>
-                <p className="text-sm text-red-50 mt-1">This will stop the student from sending new messages.</p>
-              </div>
-              <div className="p-5">
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-                  <p className="font-semibold">Blocked user notice</p>
-                  <p className="mt-2">Admin blocked you for repeated message activity. If you want to contact admin, send mail to adminnextstepai@gmail.com.</p>
-                </div>
-                {blockError && (
-                  <div className="mt-4 rounded-xl border border-red-200 bg-red-100 px-4 py-3 text-sm font-semibold text-red-700">
-                    {blockError}
-                  </div>
-                )}
-                <div className="mt-5 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBlockConfirm({ open: false, message: null })}
-                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const message = blockConfirm.message;
-                      setBlockConfirm({ open: false, message: null });
-                      await handleBlockUser(message);
-                    }}
-                    className="px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 transition"
-                  >
-                    Block User
-                  </button>
                 </div>
               </div>
             </div>

@@ -1,6 +1,8 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
 
+const normalizeRole = (value) => (typeof value === "string" ? value.trim().toUpperCase() : "");
+
 function parseUser() {
   const raw = localStorage.getItem("user");
   if (!raw) {
@@ -17,12 +19,13 @@ function parseUser() {
 export default function AdminRoute({ children }) {
   const token = localStorage.getItem("token");
   const user = parseUser();
+  const role = normalizeRole(user?.user_role || user?.userRole);
 
   if (!token || !user) {
     return <Navigate to="/login" replace state={{ errorMessage: "Please login as admin to continue." }} />;
   }
 
-  if (user.user_role !== "ADMIN") {
+  if (role !== "ADMIN") {
     return <Navigate to="/dashboard" replace state={{ errorMessage: "Admin access only." }} />;
   }
 

@@ -12,6 +12,7 @@ import com.smartcareer.backend.entity.UserEntity;
 import com.smartcareer.backend.entity.UserRole;
 import com.smartcareer.backend.repository.QuizSubmissionRepository;
 import com.smartcareer.backend.repository.UserRepository;
+import com.smartcareer.backend.repository.VerifiedSkillRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -39,16 +40,19 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AppProperties appProperties;
+    private final VerifiedSkillRepository verifiedSkillRepository;
 
     public AuthService(
         UserRepository userRepository,
         QuizSubmissionRepository quizSubmissionRepository,
+        VerifiedSkillRepository verifiedSkillRepository,
         PasswordEncoder passwordEncoder,
         JwtUtil jwtUtil,
         AppProperties appProperties
     ) {
         this.userRepository = userRepository;
         this.quizSubmissionRepository = quizSubmissionRepository;
+        this.verifiedSkillRepository = verifiedSkillRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.appProperties = appProperties;
@@ -201,8 +205,10 @@ public class AuthService {
     private UserResponse toUserResponse(UserEntity user) {
         ProfileCompletionSnapshot completionSnapshot = buildProfileCompletionSnapshot(user);
         boolean quizSubmitted = quizSubmissionRepository.findByUserId(user.getId()).isPresent();
+        boolean verificationCompleted = verifiedSkillRepository.countByUserId(user.getId()) > 0;
         boolean recommendationEligible = completionSnapshot.percentage() >= RECOMMENDATION_REQUIRED_COMPLETION_PERCENTAGE
-            && quizSubmitted;
+            && quizSubmitted
+            && verificationCompleted;
 
         return new UserResponse(
             user.getId(),
