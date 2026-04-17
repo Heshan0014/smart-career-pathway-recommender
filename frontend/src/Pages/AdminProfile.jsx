@@ -30,7 +30,7 @@ function isValidPassword(value) {
 }
 
 function parseUser() {
-  const raw = localStorage.getItem("user");
+  const raw = sessionStorage.getItem("user");
   if (!raw) {
     return null;
   }
@@ -55,13 +55,13 @@ export default function AdminProfile() {
   const currentUser = useMemo(() => parseUser(), []);
 
   const forceLogout = useCallback((message) => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
     navigate("/login", { replace: true, state: { errorMessage: message || "Session expired." } });
   }, [navigate]);
 
   const buildHeaders = useCallback((includeJson = false) => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
       forceLogout("Please login again.");
       return null;

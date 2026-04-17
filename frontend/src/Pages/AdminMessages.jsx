@@ -71,8 +71,8 @@ export default function AdminMessages() {
   }, []);
 
   useEffect(() => {
-    const authToken = localStorage.getItem("token");
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const authToken = sessionStorage.getItem("token");
+    const user = JSON.parse(sessionStorage.getItem("user") || "{}");
 
     if (!authToken || user.user_role !== "ADMIN") {
       navigate("/login");

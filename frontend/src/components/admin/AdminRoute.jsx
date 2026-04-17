@@ -4,7 +4,7 @@ import { Navigate } from "react-router-dom";
 const normalizeRole = (value) => (typeof value === "string" ? value.trim().toUpperCase() : "");
 
 function parseUser() {
-  const raw = localStorage.getItem("user");
+  const raw = sessionStorage.getItem("user");
   if (!raw) {
     return null;
   }
@@ -17,7 +17,7 @@ function parseUser() {
 }
 
 export default function AdminRoute({ children }) {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
   const user = parseUser();
   const role = normalizeRole(user?.user_role || user?.userRole);
 

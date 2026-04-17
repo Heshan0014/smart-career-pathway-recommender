@@ -16,7 +16,7 @@ export default function CommonHeader({ user = null, alwaysVisible = false }) {
   const isStudent = activeUser?.user_role === "STUDENT";
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
+    const userData = sessionStorage.getItem("user");
 
     if (userData) {
       try {
@@ -30,7 +30,7 @@ export default function CommonHeader({ user = null, alwaysVisible = false }) {
   }, [user]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) return;
 
     const isStudentUser = isStudent;

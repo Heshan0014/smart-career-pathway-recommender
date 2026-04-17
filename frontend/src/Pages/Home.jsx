@@ -40,8 +40,8 @@ function Hero() {
   }, [slides.length]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const userData = localStorage.getItem("user");
+    const token = sessionStorage.getItem("token");
+    const userData = sessionStorage.getItem("user");
     setIsLoggedIn(Boolean(token && userData));
 
     if (userData) {
@@ -409,7 +409,7 @@ export default function HomePage() {
   const [showScrollTop, setShowScrollTop] = useState(false);
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
+    const userData = sessionStorage.getItem("user");
     if (userData) {
       try {
         setCurrentUser(JSON.parse(userData));
@@ -421,7 +421,7 @@ export default function HomePage() {
 
   // Poll for unread message replies if user is a student
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     const isStudent = currentUser?.user_role === "STUDENT";
     
     if (!token || !isStudent) {

@@ -29,7 +29,7 @@ export default function PersonalizedAssessment() {
   const [unusuallyFastCount, setUnusuallyFastCount] = useState(0);
   const [unusuallySlowCount, setUnusuallySlowCount] = useState(0);
 
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
 
   const loadPage = async () => {
     if (!token) {
@@ -55,8 +55,8 @@ export default function PersonalizedAssessment() {
 
       if (!meRes.ok || !statusRes.ok) {
         if (meRes.status === 401 || meRes.status === 403 || statusRes.status === 401 || statusRes.status === 403) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
+          sessionStorage.removeItem("token");
+          sessionStorage.removeItem("user");
           navigate("/login");
           return;
         }

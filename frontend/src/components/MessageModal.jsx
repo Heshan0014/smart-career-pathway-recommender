@@ -16,7 +16,7 @@ export default function MessageModal({ isOpen, onClose, user }) {
   const blockedReason = user?.message_blocked_reason || user?.messageBlockedReason || "Admin blocked you for repeated message activity.";
 
   useEffect(() => {
-    const authToken = localStorage.getItem("token");
+    const authToken = sessionStorage.getItem("token");
     setToken(authToken || "");
   }, []);
 

@@ -20,10 +20,10 @@ export default function StudentDashboard() {
   const [studentUnreadCount, setStudentUnreadCount] = useState(0);
 
   const loadRecommendation = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("user");
       navigate("/login");
       return;
     }
@@ -44,8 +44,8 @@ export default function StudentDashboard() {
             throw new Error(responseData.detail || "Recommendations are locked. Complete profile and quiz requirements first.");
           }
 
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
+          sessionStorage.removeItem("token");
+          sessionStorage.removeItem("user");
           navigate("/login");
           return;
         }
@@ -63,7 +63,7 @@ export default function StudentDashboard() {
   }, [navigate]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
       navigate("/login");
       return;
@@ -80,8 +80,8 @@ export default function StudentDashboard() {
 
         if (!meResponse.ok) {
           if (meResponse.status === 401 || meResponse.status === 403 || meResponse.status === 404) {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
+            sessionStorage.removeItem("token");
+            sessionStorage.removeItem("user");
             navigate("/login");
             return;
           }
@@ -90,7 +90,7 @@ export default function StudentDashboard() {
 
         const meData = await meResponse.json();
         setProfile(meData);
-        localStorage.setItem("user", JSON.stringify(meData));
+        sessionStorage.setItem("user", JSON.stringify(meData));
 
         try {
           const quizResponse = await fetch(`${API_BASE_URL}/api/v1/quiz/me`, {
@@ -136,7 +136,7 @@ export default function StudentDashboard() {
 
   // Poll for unread message replies
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) return;
 
     const loadUnreadCount = async () => {
@@ -188,8 +188,8 @@ export default function StudentDashboard() {
               <button
                 type="button"
                 onClick={() => {
-                  localStorage.removeItem("token");
-                  localStorage.removeItem("user");
+                  sessionStorage.removeItem("token");
+                  sessionStorage.removeItem("user");
                   navigate("/login", { replace: true });
                 }}
                 className="modern-btn-primary px-4 py-2 rounded-xl"

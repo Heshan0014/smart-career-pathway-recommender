@@ -65,7 +65,7 @@ export default function SkillVerification() {
   const [certificates, setCertificates] = useState([emptyCertificate()]);
   const [submitting, setSubmitting] = useState(false);
 
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
 
   const loadStatus = async () => {
     if (!token) {
@@ -94,8 +94,8 @@ export default function SkillVerification() {
 
       if (!meRes.ok) {
         if (meRes.status === 401 || meRes.status === 403) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
+          sessionStorage.removeItem("token");
+          sessionStorage.removeItem("user");
           navigate("/login");
           return;
         }
@@ -456,7 +456,7 @@ export default function SkillVerification() {
 
         <section className="glass-panel rounded-2xl p-6 md:p-8">
           <p className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Three-Stage Verification</p>
-          <h1 className="text-2xl md:text-4xl font-extrabold text-slate-900 mt-2">Skill Verification Assessment Flow</h1>
+          <h1 className="text-2xl md:text-4xl font-extrabold text-slate-900 mt-2">Certification upload</h1>
         </section>
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">

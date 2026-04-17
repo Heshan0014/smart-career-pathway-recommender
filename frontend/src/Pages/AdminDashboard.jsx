@@ -6,7 +6,7 @@ import AdminToast from "../components/admin/AdminToast";
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
 
 function parseUser() {
-  const raw = localStorage.getItem("user");
+  const raw = sessionStorage.getItem("user");
   if (!raw) {
     return null;
   }
@@ -28,13 +28,13 @@ export default function AdminDashboard() {
   const [pieAnimatedRatio, setPieAnimatedRatio] = useState(0);
 
   const forceLogout = useCallback((message) => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
     navigate("/login", { replace: true, state: { errorMessage: message || "Session expired. Please login again." } });
   }, [navigate]);
 
   const buildAuthHeaders = useCallback(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
       forceLogout("Please login as admin.");
       return null;

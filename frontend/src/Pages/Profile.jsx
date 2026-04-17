@@ -371,7 +371,7 @@ export default function Profile() {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
       navigate("/login");
       return;
@@ -389,8 +389,8 @@ export default function Profile() {
         if (!response.ok) {
           const responseData = await response.json().catch(() => ({}));
           if (response.status === 401 || response.status === 403 || response.status === 404) {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
+            sessionStorage.removeItem("token");
+            sessionStorage.removeItem("user");
             navigate("/login");
             return;
           }
@@ -421,8 +421,8 @@ export default function Profile() {
             setQuizSubmittedAt("");
             setIsQuizSubmitted(false);
           } else if (quizResponse.status === 401 || quizResponse.status === 403) {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
+            sessionStorage.removeItem("token");
+            sessionStorage.removeItem("user");
             navigate("/login");
             return;
           }
@@ -456,7 +456,7 @@ export default function Profile() {
 
   // Poll for unread message replies
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) return;
 
     const loadUnreadCount = async () => {
@@ -506,14 +506,14 @@ export default function Profile() {
   };
 
   const confirmStudentLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
     setIsLogoutDialogOpen(false);
     navigate("/login", { replace: true });
   };
 
   const handleSave = async () => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
       navigate("/login");
       return;
@@ -587,8 +587,8 @@ export default function Profile() {
       const responseData = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (response.status === 401 || response.status === 403 || response.status === 404) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
+          sessionStorage.removeItem("token");
+          sessionStorage.removeItem("user");
           navigate("/login");
           return;
         }
@@ -600,10 +600,10 @@ export default function Profile() {
       setFormData(mapped);
       setFieldErrors(getFieldErrors(mapped));
       setTouchedFields({});
-      localStorage.setItem("user", JSON.stringify(responseData));
+      sessionStorage.setItem("user", JSON.stringify(responseData));
 
       if (payload.email) {
-        localStorage.removeItem("token");
+        sessionStorage.removeItem("token");
         navigate("/login");
         return;
       }
@@ -684,7 +684,7 @@ export default function Profile() {
   };
 
   const handleQuizSubmit = async () => {
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     if (!token) {
       navigate("/login");
       return;
@@ -713,8 +713,8 @@ export default function Profile() {
       const responseData = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (response.status === 401) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
+          sessionStorage.removeItem("token");
+          sessionStorage.removeItem("user");
           navigate("/login");
           return;
         }
@@ -772,8 +772,8 @@ export default function Profile() {
               <button
                 type="button"
                 onClick={() => {
-                  localStorage.removeItem("token");
-                  localStorage.removeItem("user");
+                  sessionStorage.removeItem("token");
+                  sessionStorage.removeItem("user");
                   navigate("/login", { replace: true });
                 }}
                 className="modern-btn-primary px-4 py-2 rounded-xl"

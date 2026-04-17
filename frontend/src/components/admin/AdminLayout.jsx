@@ -24,8 +24,8 @@ export default function AdminLayout({ user, title, subtitle, actions, children }
   }, [isSidebarCollapsed]);
 
   const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
     navigate("/login", { replace: true });
   };
 

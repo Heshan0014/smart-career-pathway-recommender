@@ -93,21 +93,21 @@ export default function Login() {
 
         const returnedRole = getUserRole(data?.user);
         if (!isAdminMode && returnedRole === "ADMIN") {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
+          sessionStorage.removeItem("token");
+          sessionStorage.removeItem("user");
           setError("Admins must sign in using Admin Login only.");
           return;
         }
 
         if (isAdminMode && returnedRole !== "ADMIN") {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
+          sessionStorage.removeItem("token");
+          sessionStorage.removeItem("user");
           setError("This account is not an admin account.");
           return;
         }
 
-        localStorage.setItem("token", data.access_token);
-        localStorage.setItem("user", JSON.stringify(data.user));
+        sessionStorage.setItem("token", data.access_token);
+        sessionStorage.setItem("user", JSON.stringify(data.user));
         navigate(returnedRole === "ADMIN" ? "/admin/dashboard" : "/dashboard", {
           replace: true,
           state: { showAppLoader: true },
