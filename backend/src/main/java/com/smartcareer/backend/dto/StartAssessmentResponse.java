@@ -19,6 +19,9 @@ public class StartAssessmentResponse {
     @JsonProperty("total_time_limit_sec")
     private int totalTimeLimitSec;
 
+    @JsonProperty("questions_per_skill")
+    private int questionsPerSkill;
+
     @JsonProperty("started_at")
     private Instant startedAt;
 
@@ -27,12 +30,14 @@ public class StartAssessmentResponse {
         List<DetectedSkillResponse> detectedSkills,
         List<AssessmentQuestionResponse> questions,
         int totalTimeLimitSec,
+        int questionsPerSkill,
         Instant startedAt
     ) {
         this.sessionId = sessionId;
         this.detectedSkills = detectedSkills;
         this.questions = questions;
         this.totalTimeLimitSec = totalTimeLimitSec;
+        this.questionsPerSkill = questionsPerSkill;
         this.startedAt = startedAt;
     }
 
@@ -50,6 +55,10 @@ public class StartAssessmentResponse {
 
     public int getTotalTimeLimitSec() {
         return totalTimeLimitSec;
+    }
+
+    public int getQuestionsPerSkill() {
+        return questionsPerSkill;
     }
 
     public Instant getStartedAt() {

@@ -5,10 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartcareer.backend.dto.RecommendationOptionResponse;
 import com.smartcareer.backend.dto.RecommendationResponse;
 import com.smartcareer.backend.dto.UserResponse;
+import com.smartcareer.backend.entity.AssessmentSessionEntity;
+import com.smartcareer.backend.entity.AssessmentSessionStatus;
 import com.smartcareer.backend.entity.QuizSubmissionEntity;
 import com.smartcareer.backend.entity.SkillLevel;
 import com.smartcareer.backend.entity.UserEntity;
 import com.smartcareer.backend.entity.VerifiedSkillEntity;
+import com.smartcareer.backend.repository.AssessmentSessionRepository;
 import com.smartcareer.backend.repository.QuizSubmissionRepository;
 import com.smartcareer.backend.repository.UserRepository;
 import com.smartcareer.backend.repository.VerifiedSkillRepository;
@@ -29,6 +32,7 @@ import java.util.Map;
 public class RecommendationService {
 
     private final AuthService authService;
+    private final AssessmentSessionRepository assessmentSessionRepository;
     private final QuizSubmissionRepository quizSubmissionRepository;
     private final UserRepository userRepository;
     private final VerifiedSkillRepository verifiedSkillRepository;
@@ -36,12 +40,14 @@ public class RecommendationService {
 
     public RecommendationService(
         AuthService authService,
+        AssessmentSessionRepository assessmentSessionRepository,
         QuizSubmissionRepository quizSubmissionRepository,
         UserRepository userRepository,
         VerifiedSkillRepository verifiedSkillRepository,
         ObjectMapper objectMapper
     ) {
         this.authService = authService;
+        this.assessmentSessionRepository = assessmentSessionRepository;
         this.quizSubmissionRepository = quizSubmissionRepository;
         this.userRepository = userRepository;
         this.verifiedSkillRepository = verifiedSkillRepository;
@@ -72,6 +78,9 @@ public class RecommendationService {
             scoreFromVerifiedSkills(scores, verifiedSkills);
         }
 
+        Map<String, Double> assessmentAccuracyBySkill = loadLatestAssessmentSkillAccuracy(user.getId());
+        scoreFromAssessmentAccuracy(scores, assessmentAccuracyBySkill);
+
         scoreFromText(scores, extractAnswersText(answers));
         scoreFromProfile(scores, user);
 
@@ -84,7 +93,7 @@ public class RecommendationService {
         int secondScore = sorted.size() > 1 ? sorted.get(1).getValue() : 0;
         int confidence = topScore == 0 ? 0 : Math.max(55, Math.min(95, 60 + (topScore - secondScore) * 8));
 
-        List<String> reasons = buildReasons(primaryPath, user, answers, verifiedSkills);
+        List<String> reasons = buildReasons(primaryPath, user, answers, verifiedSkills, assessmentAccuracyBySkill);
         List<String> nextSteps = buildNextSteps(primaryPath);
 
         List<RecommendationOptionResponse> alternatives = sorted.stream()
@@ -217,6 +226,98 @@ public class RecommendationService {
         }
     }
 
+    private void scoreFromAssessmentAccuracy(Map<String, Integer> scores, Map<String, Double> accuracyBySkill) {
+        accuracyBySkill.forEach((skillArea, accuracy) -> {
+            String path = mapSkillToPath(skillArea);
+            if (path == null) {
+                return;
+            }
+
+            int bonus = (int) Math.round(Math.max(0.0, Math.min(1.0, accuracy)) * 20.0);
+            addScore(scores, path, bonus);
+        });
+    }
+
+    private String mapSkillToPath(String skillArea) {
+        if (skillArea == null) {
+            return null;
+        }
+
+        String normalized = skillArea.toLowerCase(Locale.ROOT);
+        if (normalized.contains("python") || normalized.contains("software") || normalized.contains("web")) {
+            return "Software Engineering";
+        }
+        if (normalized.contains("data")) {
+            return "Data Science / AI";
+        }
+        if (normalized.contains("ui") || normalized.contains("ux") || normalized.contains("design")) {
+            return "UI/UX Design";
+        }
+        if (normalized.contains("cyber") || normalized.contains("security")) {
+            return "Cybersecurity";
+        }
+        if (normalized.contains("network") || normalized.contains("cloud")) {
+            return "Networking & Cloud";
+        }
+        return null;
+    }
+
+    private Map<String, Double> loadLatestAssessmentSkillAccuracy(Long userId) {
+        AssessmentSessionEntity latest = assessmentSessionRepository
+            .findTopByUserIdAndStatusOrderByCompletedAtDesc(userId, AssessmentSessionStatus.COMPLETED)
+            .orElse(null);
+
+        if (latest == null || latest.getQuestionsJson() == null || latest.getResponsesJson() == null) {
+            return Map.of();
+        }
+
+        try {
+            Map<String, String> skillByQuestionId = new HashMap<>();
+            JsonNode questions = objectMapper.readTree(latest.getQuestionsJson());
+            if (questions != null && questions.isArray()) {
+                for (JsonNode question : questions) {
+                    String questionId = question.path("questionId").asText("");
+                    String skillArea = question.path("skillArea").asText("");
+                    if (!questionId.isBlank() && !skillArea.isBlank()) {
+                        skillByQuestionId.put(questionId, skillArea);
+                    }
+                }
+            }
+
+            Map<String, Integer> totalBySkill = new HashMap<>();
+            Map<String, Integer> correctBySkill = new HashMap<>();
+
+            JsonNode responses = objectMapper.readTree(latest.getResponsesJson());
+            if (responses != null && responses.isArray()) {
+                for (JsonNode response : responses) {
+                    String questionId = response.path("question_id").asText("");
+                    if (questionId.isBlank()) {
+                        continue;
+                    }
+
+                    String skill = skillByQuestionId.get(questionId);
+                    if (skill == null || skill.isBlank()) {
+                        continue;
+                    }
+
+                    totalBySkill.merge(skill, 1, Integer::sum);
+                    if (response.path("correct").asBoolean(false)) {
+                        correctBySkill.merge(skill, 1, Integer::sum);
+                    }
+                }
+            }
+
+            Map<String, Double> accuracyBySkill = new HashMap<>();
+            totalBySkill.forEach((skill, total) -> {
+                int correct = correctBySkill.getOrDefault(skill, 0);
+                accuracyBySkill.put(skill, total == 0 ? 0.0 : (correct / (double) total));
+            });
+            return accuracyBySkill;
+        } catch (IOException ex) {
+            return Map.of();
+        }
+    }
+
     private int levelWeight(SkillLevel level) {
         if (level == SkillLevel.ADVANCED) {
             return 9;
@@ -259,7 +360,13 @@ public class RecommendationService {
         scores.put(career, scores.getOrDefault(career, 0) + amount);
     }
 
-    private List<String> buildReasons(String primaryPath, UserEntity user, JsonNode answers, List<VerifiedSkillEntity> verifiedSkills) {
+    private List<String> buildReasons(
+        String primaryPath,
+        UserEntity user,
+        JsonNode answers,
+        List<VerifiedSkillEntity> verifiedSkills,
+        Map<String, Double> assessmentAccuracyBySkill
+    ) {
         List<String> reasons = new ArrayList<>();
         reasons.add("Your quiz responses align most strongly with " + primaryPath + ".");
 
@@ -270,6 +377,13 @@ public class RecommendationService {
         if (user.getFavoriteField() != null && !user.getFavoriteField().isBlank()) {
             reasons.add("Your preferred field (" + user.getFavoriteField() + ") supports this pathway.");
         }
+
+        assessmentAccuracyBySkill.entrySet().stream()
+            .max(Map.Entry.comparingByValue())
+            .ifPresent(top -> reasons.add(
+                "Your strongest assessed performance was in " + top.getKey() + " ("
+                    + Math.round(top.getValue() * 100) + "% correct), which was prioritized in recommendation ranking."
+            ));
 
         if (answers != null && answers.isObject() && answers.size() >= 10) {
             reasons.add("You completed a broad quiz response set, increasing recommendation reliability.");

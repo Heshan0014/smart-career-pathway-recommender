@@ -10,6 +10,8 @@ import com.smartcareer.backend.dto.SubmitAssessmentResponse;
 import com.smartcareer.backend.service.SkillVerificationService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -49,6 +51,22 @@ public class SkillVerificationController {
         @Valid @RequestBody CertificateAnalysisRequest request
     ) {
         return skillVerificationService.analyzeCertificates(authorizationHeader, request);
+    }
+
+    @PostMapping("/certifications/save")
+    public CertificateAnalysisResponse saveCertificates(
+        @RequestHeader("Authorization") String authorizationHeader,
+        @Valid @RequestBody CertificateAnalysisRequest request
+    ) {
+        return skillVerificationService.saveCertificates(authorizationHeader, request);
+    }
+
+    @DeleteMapping("/certifications/{certificateId}")
+    public void deleteCertificate(
+        @RequestHeader("Authorization") String authorizationHeader,
+        @PathVariable("certificateId") Long certificateId
+    ) {
+        skillVerificationService.deleteCertificate(authorizationHeader, certificateId);
     }
 
     @PostMapping("/assessment/start")

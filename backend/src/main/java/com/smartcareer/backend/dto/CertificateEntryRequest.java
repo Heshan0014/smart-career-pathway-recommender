@@ -5,20 +5,19 @@ import jakarta.validation.constraints.NotBlank;
 
 public class CertificateEntryRequest {
 
-    @NotBlank
     @JsonProperty("title")
     private String title;
 
     @JsonProperty("provider")
     private String provider;
 
-    @NotBlank
     @JsonProperty("description")
     private String description;
 
     @JsonProperty("certificate_content")
     private String certificateContent;
 
+    @NotBlank
     @JsonProperty("certificate_image_base64")
     private String certificateImageBase64;
 

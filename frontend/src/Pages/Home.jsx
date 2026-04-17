@@ -13,7 +13,7 @@ function Hero() {
 
   const slides = [
     {
-      image: "/images/slide1.jpg",
+      image: "/images/p4.jpg",
       title: "AI-Powered Career Guidance",
       subtitle: "Discover the best career path based on your skills and interests",
     },
@@ -23,7 +23,7 @@ function Hero() {
       subtitle: "Get a guided step-by-step plan tailored to your current level and your target career role",
     },
     {
-      image: "/images/p4.jpg",
+      image: "/images/slide1.jpg",
       title: "Turn Learning Into Career Outcomes",
       subtitle: "Move from confusion to clarity with smart course suggestions, project ideas, and growth tracking",
     },

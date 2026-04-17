@@ -257,7 +257,7 @@ export default function StudentDashboard() {
               onClick={() => navigate("/skill-verification")}
               className="mt-4 text-sm font-semibold text-emerald-700 hover:text-emerald-800"
             >
-              Open Verification Flow
+              Skill Verification 
             </button>
           </div>
         </section>

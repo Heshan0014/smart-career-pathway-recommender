@@ -9,5 +9,6 @@ import java.util.Optional;
 public interface VerifiedSkillRepository extends JpaRepository<VerifiedSkillEntity, Long> {
     List<VerifiedSkillEntity> findByUserIdOrderBySkillNameAsc(Long userId);
     Optional<VerifiedSkillEntity> findByUserIdAndSkillName(Long userId, String skillName);
+    void deleteByUserId(Long userId);
     long countByUserId(Long userId);
 }

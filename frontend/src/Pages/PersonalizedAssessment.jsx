@@ -146,6 +146,14 @@ export default function PersonalizedAssessment() {
     return assessment.questions[currentQuestionIndex] || null;
   }, [assessment, currentQuestionIndex]);
 
+  const detectedSkillCount = (status?.detected_skills || []).length;
+  const plannedQuestionsPerSkill = detectedSkillCount <= 1 ? 20 : 10;
+  const plannedTotalQuestions = detectedSkillCount > 0 ? detectedSkillCount * plannedQuestionsPerSkill : 0;
+
+  const activeSkillCount = (assessment?.detected_skills || []).length;
+  const activeQuestionsPerSkill = assessment?.questions_per_skill || (activeSkillCount <= 1 ? 20 : 10);
+  const activeTotalQuestions = Array.isArray(assessment?.questions) ? assessment.questions.length : 0;
+
   const handleStartAssessment = async () => {
     if (!token) {
       navigate("/login");
@@ -389,6 +397,15 @@ export default function PersonalizedAssessment() {
           <p className="text-sm text-slate-600 mt-3">
             This assessment is generated only from your detected certificate skill areas and monitors behavior for fairness.
           </p>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => navigate("/skill-verification")}
+              className="modern-btn-secondary px-4 py-2 rounded-xl"
+            >
+              Back to Skill Verification
+            </button>
+          </div>
         </section>
 
         {submissionResult ? (
@@ -434,13 +451,24 @@ export default function PersonalizedAssessment() {
           </section>
         ) : !assessment ? (
           <section className="glass-panel rounded-2xl p-6">
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p>
+                Detected skills: <span className="font-semibold">{detectedSkillCount}</span>
+              </p>
+              <p>
+                Questions per skill: <span className="font-semibold">{plannedQuestionsPerSkill}</span>
+              </p>
+              <p>
+                Total questions to face: <span className="font-semibold">{plannedTotalQuestions}</span>
+              </p>
+            </div>
             <button
               type="button"
               onClick={handleStartAssessment}
               disabled={startingAssessment}
               className="modern-btn-primary px-5 py-2.5 rounded-xl disabled:opacity-60"
             >
-              {startingAssessment ? "Preparing assessment..." : "Start Final Assessment (20 Questions)"}
+              {startingAssessment ? "Preparing assessment..." : `Start Final Assessment (${plannedTotalQuestions || "..."} Questions)`}
             </button>
           </section>
         ) : (
@@ -455,6 +483,9 @@ export default function PersonalizedAssessment() {
 
               <p className="text-xs text-slate-500">
                 Question {currentQuestionIndex + 1} of {assessment.questions.length} • Skill: {currentQuestion.skill_area}
+              </p>
+              <p className="text-xs text-slate-500">
+                Assessment plan: {activeSkillCount} skill{activeSkillCount === 1 ? "" : "s"} × {activeQuestionsPerSkill} questions each = {activeTotalQuestions} total
               </p>
               <p className="text-sm font-semibold text-slate-900">{currentQuestion.question}</p>
 

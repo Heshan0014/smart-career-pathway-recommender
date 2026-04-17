@@ -40,14 +40,13 @@ async function extractOcrText(file) {
 
 function emptyCertificate() {
   return {
-    title: "",
-    provider: "",
-    description: "",
-    certificate_content: "",
+    id: null,
     certificate_image_base64: "",
     extracted_ocr_text: "",
     ocr_status: "idle",
     file_name: "",
+    is_saved: false,
+    dirty: false,
   };
 }
 
@@ -61,6 +60,7 @@ export default function SkillVerification() {
   const [success, setSuccess] = useState("");
   const [hasQuizSubmission, setHasQuizSubmission] = useState(false);
   const [savedCertificates, setSavedCertificates] = useState([]);
+  const [analysisPreview, setAnalysisPreview] = useState(null);
 
   const [certificates, setCertificates] = useState([emptyCertificate()]);
   const [submitting, setSubmitting] = useState(false);
@@ -140,6 +140,7 @@ export default function SkillVerification() {
 
         if (normalizedList.length > 0) {
           setCertificates(normalizedList.map((item) => ({
+            id: item.id || null,
             title: item.title || "",
             provider: item.provider || "",
             description: item.description || "",
@@ -147,7 +148,9 @@ export default function SkillVerification() {
             certificate_image_base64: item.certificate_image_base64 || "",
             extracted_ocr_text: "",
             ocr_status: "idle",
-            file_name: "",
+            file_name: item.title || "",
+            is_saved: true,
+            dirty: false,
           })));
         }
       }
@@ -168,18 +171,16 @@ export default function SkillVerification() {
   const stage3Done = Boolean(status?.assessment_stage_completed);
 
   const addCertificateRow = () => {
+    setAnalysisPreview(null);
     setCertificates((prev) => [...prev, emptyCertificate()]);
   };
 
   const removeCertificateRow = (idx) => {
+    setAnalysisPreview(null);
     setCertificates((prev) => {
       const next = prev.filter((_, index) => index !== idx);
       return next.length > 0 ? next : [emptyCertificate()];
     });
-  };
-
-  const updateCertificate = (idx, field, value) => {
-    setCertificates((prev) => prev.map((item, index) => (index === idx ? { ...item, [field]: value } : item)));
   };
 
   const handleImageUpload = (idx, file) => {
@@ -187,12 +188,21 @@ export default function SkillVerification() {
       return;
     }
 
+    if (!file.type || !file.type.startsWith("image/")) {
+      setError("Only image files are allowed for certificate upload.");
+      return;
+    }
+
+    setAnalysisPreview(null);
+    setError("");
+
     setCertificates((prev) => prev.map((item, index) => (
       index === idx
         ? {
             ...item,
             ocr_status: "processing",
             extracted_ocr_text: "",
+            dirty: true,
           }
         : item
     )));
@@ -207,6 +217,8 @@ export default function SkillVerification() {
                 extracted_ocr_text: ocrText,
                 ocr_status: "done",
                 file_name: file.name,
+                is_saved: false,
+                dirty: true,
               }
             : item
         )));
@@ -224,26 +236,33 @@ export default function SkillVerification() {
       });
   };
 
-  const validCertificates = certificates
-    .map((item) => ({
-      title: item.title.trim(),
-      provider: item.provider.trim(),
-      description: item.description.trim(),
-      certificate_content: [item.certificate_content.trim(), item.extracted_ocr_text.trim()].filter(Boolean).join("\n"),
-      certificate_image_base64: item.certificate_image_base64,
-    }))
-    .filter((item) => item.title && item.description);
+  const toCertificateRequest = (item) => ({
+    title: (item.title || item.file_name || "Uploaded Certificate").trim() || "Uploaded Certificate",
+    provider: (item.provider || "").trim(),
+    description: (item.description || "").trim(),
+    certificate_content: (item.certificate_content || item.extracted_ocr_text || "").trim(),
+    certificate_image_base64: item.certificate_image_base64 || "",
+  });
 
-  const canSubmitStage2 = stage1Done && validCertificates.length >= 1;
+    const analyzePayload = certificates
+      .filter((item) => item.certificate_image_base64 && (!item.is_saved || item.dirty))
+      .map((item) => toCertificateRequest(item));
 
-  const handleSubmitStage2 = async () => {
+  const certificatePayload = certificates
+    .map((item) => toCertificateRequest(item))
+    .filter((item) => item.certificate_image_base64);
+
+    const canAnalyzeStage2 = stage1Done && analyzePayload.length >= 1;
+  const canSaveStage2 = stage1Done && Boolean(analysisPreview) && analysisPreview.certificates.length >= 1;
+
+  const handleAnalyzeStage2 = async () => {
     if (!token) {
       navigate("/login");
       return;
     }
 
-    if (!canSubmitStage2) {
-      setError("Please add at least one certificate with title and description.");
+    if (!canAnalyzeStage2) {
+      setError("Please upload a new or changed certificate image before analyzing.");
       return;
     }
 
@@ -251,6 +270,7 @@ export default function SkillVerification() {
       setSubmitting(true);
       setError("");
       setSuccess("");
+      setAnalysisPreview(null);
 
       const response = await fetch(`${API_BASE_URL}/api/v1/skill-verification/certifications/analyze`, {
         method: "POST",
@@ -258,7 +278,7 @@ export default function SkillVerification() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ certificates: validCertificates }),
+        body: JSON.stringify({ certificates: analyzePayload }),
       });
 
       const rawBody = await response.text();
@@ -273,16 +293,143 @@ export default function SkillVerification() {
 
       if (!response.ok) {
         if (response.status === 413) {
-          throw new Error("Failed to submit certificates: upload is too large. Try smaller images.");
+          throw new Error("Failed to analyze certificates: upload is too large. Try smaller images.");
         }
         const detail = payload.detail || payload.message || rawBody;
-        throw new Error(detail || `Failed to submit certificates (HTTP ${response.status}).`);
+        throw new Error(detail || `Failed to analyze certificates (HTTP ${response.status}).`);
       }
 
-      setSuccess(payload.analysis_summary || "Stage 2 submitted successfully.");
+      setAnalysisPreview({
+        certificates: analyzePayload,
+        detectedSkills: payload.detected_skills || [],
+        summary: payload.analysis_summary || "Skill identification complete.",
+      });
+      setSuccess("Skills identified. Review the summary, then click Save if correct.");
+    } catch (err) {
+      setError(err.message || "Failed to analyze certificates.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveStage2 = async () => {
+    if (!token) {
+      navigate("/login");
+      return;
+    }
+
+    if (!analysisPreview || analysisPreview.certificates.length === 0) {
+      setError("Please analyze certificate images first.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError("");
+      setSuccess("");
+
+      let response = await fetch(`${API_BASE_URL}/api/v1/skill-verification/certifications/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ certificates: analysisPreview.certificates }),
+      });
+
+      // Backward compatibility: older backend saves through /certifications/analyze.
+      if (response.status === 404) {
+        response = await fetch(`${API_BASE_URL}/api/v1/skill-verification/certifications/analyze`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ certificates: analysisPreview.certificates }),
+        });
+      }
+
+      const rawBody = await response.text();
+      let payload = {};
+      if (rawBody) {
+        try {
+          payload = JSON.parse(rawBody);
+        } catch (jsonErr) {
+          payload = {};
+        }
+      }
+
+      if (!response.ok) {
+        const detail = payload.detail || payload.message || rawBody;
+        throw new Error(detail || `Failed to save certificates (HTTP ${response.status}).`);
+      }
+
+      setSuccess(payload.analysis_summary || "Certificates saved and skills updated.");
+      setAnalysisPreview(null);
       await loadStatus();
     } catch (err) {
-      setError(err.message || "Failed to submit certificates.");
+      setError(err.message || "Failed to save certificates.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteSavedCertificate = async (certificateId) => {
+    if (!token) {
+      navigate("/login");
+      return;
+    }
+    if (!certificateId) {
+      return;
+    }
+
+    const confirmed = window.confirm("Remove this certificate? Related detected skill claims will also be updated.");
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError("");
+      setSuccess("");
+
+      let response = await fetch(`${API_BASE_URL}/api/v1/skill-verification/certifications/${certificateId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      // Backward compatibility: older backend has no delete endpoint.
+      if (response.status === 404) {
+        const remainingCertificates = savedCertificates
+          .filter((item) => item.id !== certificateId)
+          .map((item) => toCertificateRequest(item));
+
+        if (remainingCertificates.length === 0) {
+          throw new Error("This backend version does not support deleting the last certificate directly. Please restart backend with latest code.");
+        }
+
+        response = await fetch(`${API_BASE_URL}/api/v1/skill-verification/certifications/analyze`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ certificates: remainingCertificates }),
+        });
+      }
+
+      if (!response.ok) {
+        const rawBody = await response.text();
+        throw new Error(rawBody || `Failed to delete certificate (HTTP ${response.status}).`);
+      }
+
+      setAnalysisPreview(null);
+      setSuccess("Certificate removed. Related skills were refreshed.");
+      await loadStatus();
+    } catch (err) {
+      setError(err.message || "Failed to delete certificate.");
     } finally {
       setSubmitting(false);
     }
@@ -344,40 +491,13 @@ export default function SkillVerification() {
 
         {stage1Done && (
           <section className="glass-panel rounded-2xl p-6 space-y-4">
-            <h2 className="modern-section-title">Stage 2: Upload Certificates and Experiences</h2>
+            <h2 className="modern-section-title">Stage 2: Upload Certificate Images</h2>
             <p className="text-sm text-slate-600">
-              Upload certificate image(s) and add short descriptions. You can add any number of certificates.
+              Upload certificate image(s). The system identifies related skills, shows a summary, and you decide whether to save.
             </p>
 
             {certificates.map((item, idx) => (
               <div key={`cert-${idx}`} className="rounded-xl border border-slate-200 bg-white/70 p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input
-                  className="modern-input"
-                  placeholder="Certificate title"
-                  value={item.title}
-                  onChange={(e) => updateCertificate(idx, "title", e.target.value)}
-                />
-                <input
-                  className="modern-input"
-                  placeholder="Provider"
-                  value={item.provider}
-                  onChange={(e) => updateCertificate(idx, "provider", e.target.value)}
-                />
-
-                <textarea
-                  className="modern-input md:col-span-2"
-                  placeholder="Short description about this course/certificate"
-                  value={item.description}
-                  onChange={(e) => updateCertificate(idx, "description", e.target.value)}
-                />
-
-                <textarea
-                  className="modern-input md:col-span-2"
-                  placeholder="Optional certificate text details"
-                  value={item.certificate_content}
-                  onChange={(e) => updateCertificate(idx, "certificate_content", e.target.value)}
-                />
-
                 <div className="md:col-span-2">
                   <label className="block text-xs text-slate-600 mb-1">Certificate Image</label>
                   <input
@@ -422,13 +542,36 @@ export default function SkillVerification() {
               </button>
               <button
                 type="button"
-                onClick={handleSubmitStage2}
-                disabled={submitting || !canSubmitStage2}
-                className={`px-4 py-2 rounded-xl ${canSubmitStage2 ? "modern-btn-primary" : "bg-slate-300 text-slate-600 cursor-not-allowed"}`}
+                onClick={handleAnalyzeStage2}
+                disabled={submitting || !canAnalyzeStage2}
+                className={`px-4 py-2 rounded-xl ${canAnalyzeStage2 ? "modern-btn-primary" : "bg-slate-300 text-slate-600 cursor-not-allowed"}`}
               >
-                {submitting ? "Submitting..." : "Submit"}
+                {submitting ? "Analyzing..." : "Analyze"}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveStage2}
+                disabled={submitting || !canSaveStage2}
+                className={`px-4 py-2 rounded-xl ${canSaveStage2 ? "modern-btn-primary" : "bg-slate-300 text-slate-600 cursor-not-allowed"}`}
+              >
+                {submitting ? "Saving..." : "Save Skills"}
               </button>
             </div>
+
+            {analysisPreview && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-sm font-semibold text-emerald-900">Identification Summary</p>
+                <p className="text-xs text-emerald-800 mt-1">{analysisPreview.summary}</p>
+                <p className="text-xs text-emerald-700 mt-2">If this is correct, click Save Skills. If wrong, update/remove images and analyze again.</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {analysisPreview.detectedSkills.map((skill) => (
+                    <span key={skill.skill_area} className="px-3 py-1 rounded-full text-xs bg-white border border-emerald-300 text-emerald-800">
+                      {skill.skill_area} • Claimed: {skill.claimed_level}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm font-semibold text-slate-800">Detected skill areas</p>
@@ -449,13 +592,25 @@ export default function SkillVerification() {
                   {savedCertificates.map((item, index) => (
                     <div key={`${item.id || "saved"}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
                       <p className="text-sm font-semibold text-slate-900">{item.title || "Untitled Certificate"}</p>
-                      <p className="text-xs text-slate-600 mt-1">Provider: {item.provider || "-"}</p>
-                      <p className="text-xs text-slate-600 mt-1">{item.description || "No description"}</p>
+                      {item.certificate_image_base64 && (
+                        <img
+                          src={item.certificate_image_base64}
+                          alt={item.title || "Certificate"}
+                          className="mt-2 w-full max-w-sm h-32 object-cover rounded-lg border border-slate-200"
+                        />
+                      )}
                       {item.created_at && (
                         <p className="text-[11px] text-slate-500 mt-1">
                           Uploaded: {new Date(item.created_at).toLocaleString()}
                         </p>
                       )}
+                      <button
+                        type="button"
+                        className="mt-3 px-3 py-1.5 rounded-lg text-xs border border-rose-300 text-rose-700 hover:bg-rose-50"
+                        onClick={() => handleDeleteSavedCertificate(item.id)}
+                      >
+                        Remove Certificate
+                      </button>
                     </div>
                   ))}
                 </div>

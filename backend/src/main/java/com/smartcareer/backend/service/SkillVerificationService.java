@@ -45,6 +45,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,7 +54,8 @@ public class SkillVerificationService {
 
     private static final Pattern YEARS_PATTERN = Pattern.compile("(\\d+)\\s*(year|years)", Pattern.CASE_INSENSITIVE);
     private static final int QUESTION_TIME_LIMIT_SEC = 90;
-    private static final int MIN_ASSESSMENT_QUESTION_COUNT = 20;
+    private static final int SINGLE_SKILL_QUESTION_COUNT = 20;
+    private static final int MULTI_SKILL_QUESTION_COUNT = 10;
 
     private final UserRepository userRepository;
     private final QuizSubmissionRepository quizSubmissionRepository;
@@ -86,19 +88,119 @@ public class SkillVerificationService {
         UserEntity user = getUserFromAuthorizationHeader(authorizationHeader);
         ensureStageOneComplete(user);
 
+        return buildCertificateAnalysis(request).response();
+    }
+
+    @Transactional
+    public CertificateAnalysisResponse saveCertificates(String authorizationHeader, CertificateAnalysisRequest request) {
+        UserEntity user = getUserFromAuthorizationHeader(authorizationHeader);
+        ensureStageOneComplete(user);
+
+        List<CertificateEntryRequest> mergedRequests = mergeCertificatesForSave(user.getId(), request.getCertificates());
+
+        CertificateAnalysisRequest mergedRequest = new CertificateAnalysisRequest();
+        mergedRequest.setCertificates(mergedRequests);
+        CertificateAnalysisComputation computation = buildCertificateAnalysis(mergedRequest);
+        certificateClaimRepository.deleteByUserId(user.getId());
+
+        List<CertificateClaimEntity> entitiesToSave = computation.entitiesToSave();
+        for (CertificateClaimEntity entity : entitiesToSave) {
+            entity.setUser(user);
+        }
+        certificateClaimRepository.saveAll(entitiesToSave);
+        removeStaleVerifiedSkills(user.getId());
+
+        return new CertificateAnalysisResponse(
+            computation.response().getDetectedSkills(),
+            "Certificate skills saved successfully. " + computation.response().getAnalysisSummary(),
+            Instant.now()
+        );
+    }
+
+    private List<CertificateEntryRequest> mergeCertificatesForSave(Long userId, List<CertificateEntryRequest> incomingCertificates) {
+        Map<String, CertificateEntryRequest> byKey = new LinkedHashMap<>();
+
+        List<CertificateClaimEntity> existingClaims = certificateClaimRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        for (CertificateClaimEntity existing : existingClaims) {
+            CertificateEntryRequest entry = toCertificateEntryRequest(existing);
+            byKey.put(certificateRequestKey(entry), entry);
+        }
+
+        for (CertificateEntryRequest incoming : incomingCertificates) {
+            String key = certificateRequestKey(incoming);
+            CertificateEntryRequest existing = byKey.get(key);
+            byKey.put(key, mergeCertificateEntry(existing, incoming));
+        }
+
+        return new ArrayList<>(byKey.values());
+    }
+
+    private CertificateEntryRequest mergeCertificateEntry(CertificateEntryRequest existing, CertificateEntryRequest incoming) {
+        if (existing == null) {
+            return incoming;
+        }
+
+        CertificateEntryRequest merged = new CertificateEntryRequest();
+        merged.setCertificateImageBase64(firstNonBlank(incoming.getCertificateImageBase64(), existing.getCertificateImageBase64()));
+        merged.setTitle(firstNonBlank(incoming.getTitle(), existing.getTitle()));
+        merged.setProvider(firstNonBlank(incoming.getProvider(), existing.getProvider()));
+        merged.setDescription(firstNonBlank(incoming.getDescription(), existing.getDescription()));
+        merged.setCertificateContent(firstNonBlank(incoming.getCertificateContent(), existing.getCertificateContent()));
+        return merged;
+    }
+
+    private String firstNonBlank(String preferred, String fallback) {
+        String preferredSafe = safe(preferred);
+        if (!preferredSafe.isEmpty()) {
+            return preferredSafe;
+        }
+        return safe(fallback);
+    }
+
+    private CertificateEntryRequest toCertificateEntryRequest(CertificateClaimEntity claim) {
+        CertificateEntryRequest entry = new CertificateEntryRequest();
+        entry.setTitle(claim.getCertificateTitle());
+        entry.setProvider(claim.getProvider());
+        entry.setDescription(claim.getDescription());
+        entry.setCertificateContent(claim.getCertificateContent());
+        entry.setCertificateImageBase64(claim.getCertificateImageBase64());
+        return entry;
+    }
+
+    private String certificateRequestKey(CertificateEntryRequest cert) {
+        String image = safe(cert.getCertificateImageBase64());
+        if (!image.isEmpty()) {
+            return "IMG::" + image;
+        }
+
+        return "TEXT::"
+            + safe(cert.getTitle()) + "::"
+            + safe(cert.getProvider()) + "::"
+            + safe(cert.getDescription()) + "::"
+            + safe(cert.getCertificateContent());
+    }
+
+    @Transactional
+    public void deleteCertificate(String authorizationHeader, Long certificateId) {
+        UserEntity user = getUserFromAuthorizationHeader(authorizationHeader);
+        ensureStageOneComplete(user);
+
+        CertificateClaimEntity certificate = certificateClaimRepository.findByIdAndUserId(certificateId, user.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Certificate not found"));
+
+        certificateClaimRepository.delete(certificate);
+        removeStaleVerifiedSkills(user.getId());
+    }
+
+    private CertificateAnalysisComputation buildCertificateAnalysis(CertificateAnalysisRequest request) {
         Map<String, SkillLevel> mergedClaims = new LinkedHashMap<>();
         List<CertificateClaimEntity> entitiesToSave = new ArrayList<>();
 
         for (CertificateEntryRequest cert : request.getCertificates()) {
-            String text = String.join(" ",
-                safe(cert.getTitle()),
-                safe(cert.getDescription()),
-                safe(cert.getProvider()),
-                safe(cert.getCertificateContent())
-            ).trim();
+            String text = certificateSignalText(cert);
 
             if (text.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Certificate text is required for analysis");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No text was extracted from image. Please try a clearer certificate image.");
             }
 
             List<String> detectedSkills = detectSkillAreas(text);
@@ -111,8 +213,7 @@ public class SkillVerificationService {
             }
 
             CertificateClaimEntity entity = new CertificateClaimEntity();
-            entity.setUser(user);
-            entity.setCertificateTitle(cert.getTitle().trim());
+            entity.setCertificateTitle(defaultCertificateTitle(cert));
             entity.setProvider(safe(cert.getProvider()));
             entity.setDescription(safe(cert.getDescription()));
             entity.setCertificateContent(safe(cert.getCertificateContent()));
@@ -126,18 +227,17 @@ public class SkillVerificationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No recognizable skill areas were detected from certificates");
         }
 
-        certificateClaimRepository.deleteByUserId(user.getId());
-        certificateClaimRepository.saveAll(entitiesToSave);
-
         List<DetectedSkillResponse> detected = mergedClaims.entrySet().stream()
             .sorted(Map.Entry.comparingByKey())
             .map(entry -> new DetectedSkillResponse(entry.getKey(), formatSkillLevel(entry.getValue())))
             .toList();
 
-        String summary = "Certification stage complete. " + detected.size()
-            + " skill areas were detected and mapped to claimed levels.";
+        String summary = detected.size() + " skill areas were identified from uploaded certificate images.";
 
-        return new CertificateAnalysisResponse(detected, summary, Instant.now());
+        return new CertificateAnalysisComputation(
+            new CertificateAnalysisResponse(detected, summary, Instant.now()),
+            entitiesToSave
+        );
     }
 
     public StartAssessmentResponse startAssessment(String authorizationHeader) {
@@ -156,12 +256,12 @@ public class SkillVerificationService {
         AssessmentSessionEntity session;
         List<Question> internalQuestions;
 
-        if (existingStarted != null) {
+        if (existingStarted != null && shouldReuseStartedSession(existingStarted, claimedLevels)) {
             session = existingStarted;
             internalQuestions = readQuestions(existingStarted.getQuestionsJson());
         } else {
-            internalQuestions = generateAssessmentQuestions(new ArrayList<>(claimedLevels.keySet()));
-            session = new AssessmentSessionEntity();
+            internalQuestions = generateAssessmentQuestions(claimedLevels);
+            session = existingStarted != null ? existingStarted : new AssessmentSessionEntity();
             session.setUser(user);
             session.setDetectedSkillsJson(writeJson(toStringMap(claimedLevels)));
             session.setQuestionsJson(writeJson(internalQuestions));
@@ -180,13 +280,40 @@ public class SkillVerificationService {
             .toList();
 
         int totalTimeLimitSec = questions.size() * QUESTION_TIME_LIMIT_SEC;
+        int perSkillQuestionCount = claimedLevels.size() <= 1 ? SINGLE_SKILL_QUESTION_COUNT : MULTI_SKILL_QUESTION_COUNT;
         return new StartAssessmentResponse(
             session.getId(),
             detectedSkillResponses,
             questions,
             totalTimeLimitSec,
+            perSkillQuestionCount,
             session.getStartedAt()
         );
+    }
+
+    private boolean shouldReuseStartedSession(AssessmentSessionEntity session, Map<String, SkillLevel> claimedLevels) {
+        if (session == null || session.getQuestionsJson() == null || session.getQuestionsJson().isBlank()) {
+            return false;
+        }
+
+        List<Question> questions = readQuestions(session.getQuestionsJson());
+        if (questions.isEmpty()) {
+            return false;
+        }
+
+        int expectedPerSkill = claimedLevels.size() <= 1 ? SINGLE_SKILL_QUESTION_COUNT : MULTI_SKILL_QUESTION_COUNT;
+        int expectedTotal = claimedLevels.size() * expectedPerSkill;
+        if (questions.size() != expectedTotal) {
+            return false;
+        }
+
+        Set<String> expectedSkills = claimedLevels.keySet();
+        Set<String> actualSkills = new java.util.HashSet<>();
+        for (Question question : questions) {
+            actualSkills.add(question.skillArea());
+        }
+
+        return actualSkills.equals(expectedSkills);
     }
 
     @Transactional
@@ -426,6 +553,30 @@ public class SkillVerificationService {
             .toList();
     }
 
+    private void removeStaleVerifiedSkills(Long userId) {
+        Map<String, SkillLevel> claimedLevels = loadClaimedSkillLevels(userId);
+        if (claimedLevels.isEmpty()) {
+            verifiedSkillRepository.deleteByUserId(userId);
+            return;
+        }
+
+        List<VerifiedSkillEntity> existingSkills = verifiedSkillRepository.findByUserIdOrderBySkillNameAsc(userId);
+        List<VerifiedSkillEntity> stale = existingSkills.stream()
+            .filter(item -> !claimedLevels.containsKey(item.getSkillName()))
+            .toList();
+        if (!stale.isEmpty()) {
+            verifiedSkillRepository.deleteAll(stale);
+        }
+    }
+
+    private String defaultCertificateTitle(CertificateEntryRequest cert) {
+        String title = safe(cert.getTitle());
+        if (!title.isEmpty()) {
+            return title;
+        }
+        return "Uploaded Certificate";
+    }
+
     public SubmitAssessmentResponse getLatestAssessmentResult(String authorizationHeader) {
         UserEntity user = getUserFromAuthorizationHeader(authorizationHeader);
 
@@ -541,29 +692,41 @@ public class SkillVerificationService {
 
     private List<String> detectSkillAreas(String inputText) {
         String text = inputText.toLowerCase(Locale.ROOT);
-        List<String> skills = new ArrayList<>();
+        Map<String, List<String>> keywordMap = new LinkedHashMap<>();
+        keywordMap.put("Python", List.of("python", "pandas", "numpy", "django", "flask", "fastapi", "pycharm", "jupyter"));
+        keywordMap.put("UI/UX", List.of("ui", "ux", "figma", "wireframe", "prototype", "user research", "user experience", "workshop"));
+        keywordMap.put("Cybersecurity", List.of("cyber", "security", "owasp", "penetration", "vulnerability"));
+        keywordMap.put("Data Science", List.of("data science", "machine learning", "analytics", "model", "statistics", "deep learning", "tensorflow", "pytorch", "scikit", "data analysis", "ai"));
+        keywordMap.put("Cloud", List.of("cloud", "aws", "azure", "gcp", "kubernetes", "docker", "devops", "terraform", "ci/cd", "ci cd", "jenkins"));
+        keywordMap.put("Web Development", List.of("javascript", "typescript", "react", "angular", "vue", "spring", "spring boot", "node", "nodejs", "web development", "frontend", "backend", "rest api", "html", "css"));
+        keywordMap.put("Networking", List.of("network", "tcp", "routing", "switching", "ccna"));
+        keywordMap.put("Software Engineering", List.of("software engineering", "java", "c++", "c#", "oop", "object oriented", "algorithms", "data structures", "git", "version control", "design patterns", "sql", "database", "mysql", "postgresql"));
 
-        addIfMatched(skills, "Python", text, List.of("python", "pandas", "numpy", "django", "flask"));
-        addIfMatched(skills, "UI/UX", text, List.of("ui", "ux", "figma", "wireframe", "prototype", "user research"));
-        addIfMatched(skills, "Cybersecurity", text, List.of("cyber", "security", "owasp", "penetration", "vulnerability"));
-        addIfMatched(skills, "Data Science", text, List.of("data science", "machine learning", "analytics", "model", "statistics"));
-        addIfMatched(skills, "Cloud", text, List.of("cloud", "aws", "azure", "gcp", "kubernetes", "docker"));
-        addIfMatched(skills, "Web Development", text, List.of("javascript", "react", "spring", "node", "web development", "frontend", "backend"));
-        addIfMatched(skills, "Networking", text, List.of("network", "tcp", "routing", "switching", "ccna"));
-
-        if (skills.isEmpty()) {
-            skills.add("Software Engineering");
-        }
-        return skills;
-    }
-
-    private void addIfMatched(List<String> skills, String skill, String text, List<String> keywords) {
-        for (String keyword : keywords) {
-            if (text.contains(keyword)) {
-                skills.add(skill);
-                return;
+        String bestSkill = null;
+        int bestScore = 0;
+        for (Map.Entry<String, List<String>> entry : keywordMap.entrySet()) {
+            int score = keywordHitScore(text, entry.getValue());
+            if (score > bestScore) {
+                bestScore = score;
+                bestSkill = entry.getKey();
             }
         }
+
+        if (bestSkill == null) {
+            return List.of("Software Engineering");
+        }
+
+        return List.of(bestSkill);
+    }
+
+    private int keywordHitScore(String text, List<String> keywords) {
+        int score = 0;
+        for (String keyword : keywords) {
+            if (text.contains(keyword)) {
+                score++;
+            }
+        }
+        return score;
     }
 
     private SkillLevel estimateClaimedLevel(String inputText) {
@@ -593,261 +756,404 @@ public class SkillVerificationService {
         return SkillLevel.INTERMEDIATE;
     }
 
-    private List<Question> generateAssessmentQuestions(List<String> detectedSkills) {
+    private List<Question> generateAssessmentQuestions(Map<String, SkillLevel> claimedLevels) {
         Random random = new Random();
         List<Question> allQuestions = new ArrayList<>();
 
-        List<String> skills = new ArrayList<>(detectedSkills);
+        List<String> skills = new ArrayList<>(claimedLevels.keySet());
         if (skills.isEmpty()) {
             skills.add("Software Engineering");
+            claimedLevels = new HashMap<>(claimedLevels);
+            claimedLevels.put("Software Engineering", SkillLevel.INTERMEDIATE);
         }
 
         Map<String, List<QuestionTemplate>> bank = questionBank();
-        Map<String, Integer> indexBySkill = new HashMap<>();
-        int sequence = 1;
+        Map<String, List<LeveledQuestionTemplate>> templatesBySkill = new LinkedHashMap<>();
+        int perSkillQuestionCount = skills.size() <= 1 ? SINGLE_SKILL_QUESTION_COUNT : MULTI_SKILL_QUESTION_COUNT;
 
-        while (allQuestions.size() < MIN_ASSESSMENT_QUESTION_COUNT) {
-            String skill = skills.get(allQuestions.size() % skills.size());
+        for (String skill : skills) {
             List<QuestionTemplate> templates = bank.getOrDefault(skill, fallbackQuestionTemplates(skill));
-            List<QuestionTemplate> shuffledTemplates = new ArrayList<>(templates);
-            Collections.shuffle(shuffledTemplates, random);
+            List<LeveledQuestionTemplate> leveledTemplates = assignDifficultyBands(templates);
+            List<LeveledQuestionTemplate> orderedTemplates = orderByClaimedLevel(
+                leveledTemplates,
+                claimedLevels.getOrDefault(skill, SkillLevel.INTERMEDIATE),
+                random
+            );
 
-            int index = indexBySkill.getOrDefault(skill, 0);
-            QuestionTemplate template = shuffledTemplates.get(index % shuffledTemplates.size());
-            indexBySkill.put(skill, index + 1);
-
-            allQuestions.add(new Question(
-                "Q-" + skill.replaceAll("\\s+", "-").toUpperCase(Locale.ROOT) + "-" + sequence + "-" + Math.abs(random.nextInt()),
-                skill,
-                template.question(),
-                template.questionType(),
-                template.options(),
-                template.correctOptionIndex(),
-                template.expectedKeywords(),
-                true,
-                QUESTION_TIME_LIMIT_SEC
-            ));
-            sequence++;
+            List<LeveledQuestionTemplate> uniqueTemplates = new ArrayList<>();
+            Set<String> seenKeys = new java.util.HashSet<>();
+            for (LeveledQuestionTemplate template : orderedTemplates) {
+                String key = (template.template().questionType() + "::" + template.template().question()).toLowerCase(Locale.ROOT);
+                if (seenKeys.add(key)) {
+                    uniqueTemplates.add(template);
+                }
+            }
+            int takeCount = Math.min(perSkillQuestionCount, uniqueTemplates.size());
+            templatesBySkill.put(skill, new ArrayList<>(uniqueTemplates.subList(0, takeCount)));
         }
 
-        Collections.shuffle(allQuestions, random);
+        int maxPerSkill = templatesBySkill.values().stream().mapToInt(List::size).max().orElse(0);
+        if (maxPerSkill <= 0) {
+            return allQuestions;
+        }
+        int sequence = 1;
+
+        // Interleave skills so multi-skill users get level-priority questions across all detected skills.
+        for (int i = 0; i < maxPerSkill; i++) {
+            for (String skill : skills) {
+                List<LeveledQuestionTemplate> templates = templatesBySkill.getOrDefault(skill, List.of());
+                if (i >= templates.size()) {
+                    continue;
+                }
+
+                LeveledQuestionTemplate template = templates.get(i);
+                allQuestions.add(new Question(
+                    "Q-" + skill.replaceAll("\\s+", "-").toUpperCase(Locale.ROOT) + "-" + sequence + "-" + Math.abs(random.nextInt()),
+                    skill,
+                    template.template().question(),
+                    template.template().questionType(),
+                    template.template().options(),
+                    template.template().correctOptionIndex(),
+                    template.template().expectedKeywords(),
+                    true,
+                    QUESTION_TIME_LIMIT_SEC
+                ));
+                sequence++;
+            }
+        }
         return allQuestions;
+    }
+
+    private String bandLabel(SkillLevel band) {
+        return switch (band) {
+            case BEGINNER -> "[LOW]";
+            case INTERMEDIATE -> "[MEDIUM]";
+            case ADVANCED -> "[HIGH]";
+        };
+    }
+
+    private List<LeveledQuestionTemplate> assignDifficultyBands(List<QuestionTemplate> templates) {
+        List<LeveledQuestionTemplate> leveled = new ArrayList<>();
+        for (QuestionTemplate template : templates) {
+            SkillLevel level = extractBandFromQuestion(template.question());
+            leveled.add(new LeveledQuestionTemplate(template, level));
+        }
+        return leveled;
+    }
+
+    private SkillLevel extractBandFromQuestion(String question) {
+        if (question != null) {
+            String normalized = question.toUpperCase(Locale.ROOT);
+            if (normalized.startsWith("[LOW]")) {
+                return SkillLevel.BEGINNER;
+            }
+            if (normalized.startsWith("[HIGH]")) {
+                return SkillLevel.ADVANCED;
+            }
+        }
+        return SkillLevel.INTERMEDIATE;
+    }
+
+    private List<LeveledQuestionTemplate> orderByClaimedLevel(
+        List<LeveledQuestionTemplate> templates,
+        SkillLevel claimedLevel,
+        Random random
+    ) {
+        List<LeveledQuestionTemplate> low = new ArrayList<>();
+        List<LeveledQuestionTemplate> medium = new ArrayList<>();
+        List<LeveledQuestionTemplate> high = new ArrayList<>();
+
+        for (LeveledQuestionTemplate template : templates) {
+            switch (template.level()) {
+                case BEGINNER -> low.add(template);
+                case ADVANCED -> high.add(template);
+                default -> medium.add(template);
+            }
+        }
+
+        Collections.shuffle(low, random);
+        Collections.shuffle(medium, random);
+        Collections.shuffle(high, random);
+
+        List<LeveledQuestionTemplate> ordered = new ArrayList<>();
+        switch (claimedLevel) {
+            case BEGINNER -> {
+                ordered.addAll(low);
+                ordered.addAll(medium);
+                ordered.addAll(high);
+            }
+            case ADVANCED -> {
+                ordered.addAll(high);
+                ordered.addAll(medium);
+                ordered.addAll(low);
+            }
+            default -> {
+                ordered.addAll(medium);
+                ordered.addAll(low);
+                ordered.addAll(high);
+            }
+        }
+        return ordered;
     }
 
     private Map<String, List<QuestionTemplate>> questionBank() {
         Map<String, List<QuestionTemplate>> bank = new HashMap<>();
 
-        bank.put("Python", List.of(
-            mcq(
-                "A script that parses 50k rows is too slow. Which change usually provides the largest performance gain first?",
-                List.of("Switch from loops to vectorized library operations", "Rename variables for readability", "Add more print statements", "Convert every integer to string"),
-                0
-            ),
-            mcq(
-                "Your API throws exceptions for missing keys in nested JSON. What is the safest pattern?",
-                List.of("Use dict access with guards/defaults", "Wrap every line in a while loop", "Ignore all exceptions", "Hardcode fallback payloads"),
-                0
-            ),
-            mcq(
-                "You need predictable dependencies across environments. What is the best practice?",
-                List.of("Pin versions in requirements/lock files", "Install random latest versions", "Copy site-packages folder manually", "Disable virtual environments"),
-                0
-            ),
-            written(
-                "Describe how you would structure error handling and logging in a Python REST API endpoint.",
-                List.of("exception", "logging", "status code", "validation")
-            ),
-            written(
-                "A model-serving Python service has rising latency. Explain two debugging steps and one optimization you would apply.",
-                List.of("profiling", "cache", "batch", "optimize")
-            )
-        ));
-
-        bank.put("UI/UX", List.of(
-            mcq(
-                "Users drop off on checkout. What should be validated first?",
-                List.of("Task flow friction from user journey testing", "Only typography color", "Team availability", "Random animation speed"),
-                0
-            ),
-            mcq(
-                "A mobile form has high error rate. What likely helps most?",
-                List.of("Inline validation with clear field-level messages", "Smaller submit button", "More decorative icons", "Hidden labels"),
-                0
-            ),
-            mcq(
-                "A stakeholder asks for 5 different nav patterns. What should guide decision?",
-                List.of("Consistency with user mental model and test evidence", "Personal taste only", "Most complex option", "Darkest color palette"),
-                0
-            ),
-            written(
-                "Explain how you would validate a dashboard redesign using usability testing.",
-                List.of("users", "task", "feedback", "iteration")
-            ),
-            written(
-                "Write a short plan to improve accessibility for a form-heavy student portal.",
-                List.of("contrast", "keyboard", "label", "screen reader")
-            )
-        ));
-
-        bank.put("Cybersecurity", List.of(
-            mcq(
-                "A login endpoint is vulnerable to brute force. Best immediate mitigation?",
-                List.of("Rate limiting and account lock strategy", "Show stack traces", "Disable logging", "Store passwords in plain text"),
-                0
-            ),
-            mcq(
-                "Which practice best reduces SQL injection risk?",
-                List.of("Parameterized queries/prepared statements", "String concatenation with filters", "Client-side validation only", "Base64-encoding user input"),
-                0
-            ),
-            mcq(
-                "A package CVE is reported. What should happen first?",
-                List.of("Assess impact and patch/mitigate quickly", "Ignore until next quarter", "Hide alerts", "Disable dependency scanning"),
-                0
-            ),
-            written(
-                "Describe a secure authentication design for a web app handling student personal data.",
-                List.of("jwt", "mfa", "hash", "session", "token")
-            ),
-            written(
-                "How would you investigate suspicious repeated failed logins in production logs?",
-                List.of("logs", "ip", "rate", "alert", "incident")
-            )
-        ));
-
-        bank.put("Data Science", List.of(
-            mcq(
-                "Model accuracy is high but fails in production. Most likely issue?",
-                List.of("Data drift and train-serving mismatch", "Too many comments in code", "Notebook theme", "GPU fan speed"),
-                0
-            ),
-            mcq(
-                "How to reduce data leakage in validation?",
-                List.of("Split before preprocessing fit", "Use full dataset for scaling first", "Tune on test set", "Shuffle labels"),
-                0
-            ),
-            mcq(
-                "A class imbalance problem appears. Good first baseline approach?",
-                List.of("Stratified split and class-aware metrics", "Only use accuracy metric", "Drop minority class", "Duplicate test rows"),
-                0
-            ),
-            written(
-                "Explain how you would monitor model performance drift after deployment.",
-                List.of("drift", "metric", "monitor", "retrain")
-            ),
-            written(
-                "Provide a short experiment plan for comparing two recommendation models.",
-                List.of("baseline", "metric", "validation", "ab test")
-            )
-        ));
-
-        bank.put("Cloud", List.of(
-            mcq(
-                "An app needs zero-downtime deploys. Which pattern is most suitable?",
-                List.of("Blue-green or rolling deployment", "Manual stop-start every release", "Single server reboot", "No health checks"),
-                0
-            ),
-            mcq(
-                "Which is a core principle to harden cloud access?",
-                List.of("Least privilege IAM", "Shared root account", "Publicly exposed admin ports", "No MFA"),
-                0
-            ),
-            mcq(
-                "Cost unexpectedly spikes overnight. First analysis step?",
-                List.of("Check usage/monitoring by resource tags", "Delete logs", "Scale everything up", "Disable alerts"),
-                0
-            ),
-            written(
-                "How would you design a backup and disaster recovery strategy for a student platform in cloud?",
-                List.of("backup", "recovery", "rto", "rpo", "replication")
-            ),
-            written(
-                "Explain a secure CI/CD pipeline for deploying a web backend to cloud.",
-                List.of("pipeline", "scan", "secret", "deploy", "rollback")
-            )
-        ));
-
-        bank.put("Web Development", List.of(
-            mcq(
-                "A page is slow due to large JS bundle. Best first optimization?",
-                List.of("Code-splitting and lazy loading", "Disable caching", "Inline every script", "Add more global CSS"),
-                0
-            ),
-            mcq(
-                "API requests fail due to CORS preflight. Typical fix?",
-                List.of("Correct server CORS configuration", "Disable browser security", "Use random ports", "Rename endpoint"),
-                0
-            ),
-            mcq(
-                "How do you reduce regressions in critical flows?",
-                List.of("Automated tests for key paths", "Manual checks only", "Skip code review", "Merge directly to main"),
-                0
-            ),
-            written(
-                "Describe how you would structure API error responses for a frontend-heavy application.",
-                List.of("status", "message", "code", "validation")
-            ),
-            written(
-                "How would you debug a production-only bug where dashboard data intermittently fails to load?",
-                List.of("logs", "network", "retry", "timeout", "monitor")
-            )
-        ));
-
-        bank.put("Networking", List.of(
-            mcq(
-                "Intermittent packet loss is reported. What do you check first?",
-                List.of("Interface errors, congestion, and link health", "Wallpaper settings", "Browser bookmarks", "Keyboard layout"),
-                0
-            ),
-            mcq(
-                "A subnet is exhausted. What is a practical fix?",
-                List.of("Re-plan CIDR allocation and segment correctly", "Disable DHCP", "Use one giant broadcast domain", "Ignore growth"),
-                0
-            ),
-            mcq(
-                "Sensitive traffic crosses public links. What should be enforced?",
-                List.of("Encrypted tunnels/VPN", "Plain FTP", "Open guest Wi-Fi", "Default credentials"),
-                0
-            ),
-            written(
-                "Describe a troubleshooting flow for high latency between client and backend services.",
-                List.of("latency", "traceroute", "dns", "routing", "packet")
-            ),
-            written(
-                "How would you design network segmentation for admin and student workloads?",
-                List.of("segment", "firewall", "subnet", "access control")
-            )
-        ));
-
-        bank.put("Software Engineering", fallbackQuestionTemplates("Software Engineering"));
+        bank.put("Python", pythonQuestionTemplates());
+        bank.put("UI/UX", uiuxQuestionTemplates());
+        bank.put("Cybersecurity", cybersecurityQuestionTemplates());
+        bank.put("Data Science", dataScienceQuestionTemplates());
+        bank.put("Cloud", cloudQuestionTemplates());
+        bank.put("Web Development", webDevelopmentQuestionTemplates());
+        bank.put("Networking", networkingQuestionTemplates());
+        bank.put("Software Engineering", softwareEngineeringQuestionTemplates());
         return bank;
     }
 
     private List<QuestionTemplate> fallbackQuestionTemplates(String skill) {
+        return softwareEngineeringQuestionTemplates();
+    }
+
+    private List<QuestionTemplate> pythonQuestionTemplates() {
         return List.of(
-            mcq(
-                "In a real project for " + skill + ", what most improves long-term maintainability?",
-                List.of("Clear modular design and tests", "Large functions with mixed concerns", "Skipping code reviews", "No documentation"),
-                0
-            ),
-            mcq(
-                "A production defect appears after release. Best immediate response?",
-                List.of("Triage impact, rollback or patch, then RCA", "Blame users", "Ignore until next sprint", "Delete monitoring alerts"),
-                0
-            ),
-            mcq(
-                "What best increases confidence in a new feature?",
-                List.of("Validation with tests and measurable acceptance criteria", "Only visual inspection", "No QA due to deadlines", "Randomly sampled manual clicks"),
-                0
-            ),
-            written(
-                "Explain how you would break down a large feature in " + skill + " into deliverable tasks.",
-                List.of("task", "milestone", "test", "deliverable")
-            ),
-            written(
-                "How would you communicate technical risk to non-technical stakeholders in this domain?",
-                List.of("risk", "impact", "mitigation", "timeline")
-            )
+            mcq("[LOW] Python: Which is best to handle input validation safely?", lowOptions(), 0),
+            mcq("[LOW] Python: What helps beginners avoid runtime errors quickly?", lowOptions(), 0),
+            mcq("[LOW] Python: Which step improves code readability first?", lowOptions(), 0),
+            mcq("[LOW] Python: How should you manage simple file read failures?", lowOptions(), 0),
+            mcq("[LOW] Python: Best first step before optimizing code speed?", lowOptions(), 0),
+            mcq("[LOW] Python: What is the safest way to parse uncertain data?", lowOptions(), 0),
+            written("[LOW] Python: Describe a simple debugging workflow for beginner scripts.", List.of("print", "error", "step", "fix")),
+            written("[LOW] Python: Explain basic exception handling in a student API task.", List.of("try", "except", "message", "validation")),
+
+            mcq("[MEDIUM] Python: Best approach for modular service design?", mediumOptions(), 0),
+            mcq("[MEDIUM] Python: How to ensure reliable dependency management?", mediumOptions(), 0),
+            mcq("[MEDIUM] Python: What improves API reliability under normal load?", mediumOptions(), 0),
+            mcq("[MEDIUM] Python: Best testing strategy for utility modules?", mediumOptions(), 0),
+            written("[MEDIUM] Python: Explain how you would profile and optimize one slow endpoint.", List.of("profile", "metric", "bottleneck", "optimize")),
+            written("[MEDIUM] Python: Describe logging and monitoring setup for production debugging.", List.of("logging", "trace", "monitor", "alert")),
+
+            mcq("[HIGH] Python: Best architecture for high-throughput async processing?", highOptions(), 0),
+            mcq("[HIGH] Python: Which strategy best improves resilience at scale?", highOptions(), 0),
+            mcq("[HIGH] Python: Best security posture for sensitive data flows?", highOptions(), 0),
+            written("[HIGH] Python: Describe a scalable architecture for model-serving with rollback.", List.of("architecture", "scale", "rollback", "availability")),
+            written("[HIGH] Python: Explain concurrency tradeoffs for CPU-bound and IO-bound workloads.", List.of("thread", "process", "async", "tradeoff")),
+            written("[HIGH] Python: Provide an observability design for distributed Python services.", List.of("metrics", "logs", "tracing", "sla"))
+        );
+    }
+
+    private List<QuestionTemplate> uiuxQuestionTemplates() {
+        return List.of(
+            mcq("[LOW] UI/UX: What is the first step in improving form usability?", lowOptions(), 0),
+            mcq("[LOW] UI/UX: Which choice best supports readable text layouts?", lowOptions(), 0),
+            mcq("[LOW] UI/UX: What helps users find actions faster?", lowOptions(), 0),
+            mcq("[LOW] UI/UX: Which approach improves basic accessibility quickly?", lowOptions(), 0),
+            mcq("[LOW] UI/UX: What is best for responsive mobile screens first?", lowOptions(), 0),
+            mcq("[LOW] UI/UX: Which practice reduces confusion in navigation?", lowOptions(), 0),
+            written("[LOW] UI/UX: Describe a simple wireframe validation process.", List.of("user", "task", "feedback", "iterate")),
+            written("[LOW] UI/UX: Explain how to check contrast and keyboard accessibility.", List.of("contrast", "keyboard", "focus", "label")),
+
+            mcq("[MEDIUM] UI/UX: Best method to evaluate user drop-off points?", mediumOptions(), 0),
+            mcq("[MEDIUM] UI/UX: How to maintain consistency across components?", mediumOptions(), 0),
+            mcq("[MEDIUM] UI/UX: Which process improves interaction flow decisions?", mediumOptions(), 0),
+            mcq("[MEDIUM] UI/UX: What should guide design-system evolution?", mediumOptions(), 0),
+            written("[MEDIUM] UI/UX: Explain usability test design with measurable outcomes.", List.of("metric", "task", "insight", "iteration")),
+            written("[MEDIUM] UI/UX: Describe handoff strategy between design and frontend teams.", List.of("spec", "component", "handoff", "qa")),
+
+            mcq("[HIGH] UI/UX: Best approach for complex multi-role journey redesign?", highOptions(), 0),
+            mcq("[HIGH] UI/UX: Which strategy ensures cross-platform accessibility governance?", highOptions(), 0),
+            mcq("[HIGH] UI/UX: What supports scalable design decisions in large products?", highOptions(), 0),
+            written("[HIGH] UI/UX: Describe research synthesis for conflicting stakeholder goals.", List.of("evidence", "tradeoff", "prioritize", "outcome")),
+            written("[HIGH] UI/UX: Explain experiment design for validating major UX changes.", List.of("hypothesis", "ab", "metric", "decision")),
+            written("[HIGH] UI/UX: Provide an accessibility roadmap for enterprise interfaces.", List.of("audit", "standard", "training", "monitor"))
+        );
+    }
+
+    private List<QuestionTemplate> cybersecurityQuestionTemplates() {
+        return List.of(
+            mcq("[LOW] Cybersecurity: Best immediate mitigation for brute-force login attempts?", lowOptions(), 0),
+            mcq("[LOW] Cybersecurity: Which practice most reduces SQL injection risk?", lowOptions(), 0),
+            mcq("[LOW] Cybersecurity: What is first action after CVE alert?", lowOptions(), 0),
+            mcq("[LOW] Cybersecurity: Which step improves password safety quickly?", lowOptions(), 0),
+            mcq("[LOW] Cybersecurity: What protects basic session handling?", lowOptions(), 0),
+            mcq("[LOW] Cybersecurity: Which control helps block unsafe user input?", lowOptions(), 0),
+            written("[LOW] Cybersecurity: Describe secure authentication basics for a student portal.", List.of("hash", "token", "mfa", "session")),
+            written("[LOW] Cybersecurity: Explain how to triage repeated failed logins.", List.of("ip", "rate", "alert", "block")),
+
+            mcq("[MEDIUM] Cybersecurity: Best strategy for secure API design in production?", mediumOptions(), 0),
+            mcq("[MEDIUM] Cybersecurity: How should dependency patching be prioritized?", mediumOptions(), 0),
+            mcq("[MEDIUM] Cybersecurity: Which incident response step is most critical early?", mediumOptions(), 0),
+            mcq("[MEDIUM] Cybersecurity: What strengthens defense against credential stuffing?", mediumOptions(), 0),
+            written("[MEDIUM] Cybersecurity: Explain practical threat modeling for a web backend.", List.of("asset", "threat", "risk", "mitigation")),
+            written("[MEDIUM] Cybersecurity: Describe secure secrets management and rotation.", List.of("secret", "vault", "rotation", "audit")),
+
+            mcq("[HIGH] Cybersecurity: Best design for zero-trust in distributed services?", highOptions(), 0),
+            mcq("[HIGH] Cybersecurity: Which strategy improves advanced detection coverage?", highOptions(), 0),
+            mcq("[HIGH] Cybersecurity: Best posture for compliance and operational risk balance?", highOptions(), 0),
+            written("[HIGH] Cybersecurity: Describe incident forensics workflow for production breach.", List.of("timeline", "evidence", "contain", "recover")),
+            written("[HIGH] Cybersecurity: Explain defense-in-depth architecture for student data.", List.of("layer", "segmentation", "monitor", "control")),
+            written("[HIGH] Cybersecurity: Provide a security automation roadmap for CI/CD.", List.of("scan", "policy", "gate", "rollback"))
+        );
+    }
+
+    private List<QuestionTemplate> dataScienceQuestionTemplates() {
+        return List.of(
+            mcq("[LOW] Data Science: What is first step before model training?", lowOptions(), 0),
+            mcq("[LOW] Data Science: Which practice reduces data quality issues early?", lowOptions(), 0),
+            mcq("[LOW] Data Science: How should train/test split be handled?", lowOptions(), 0),
+            mcq("[LOW] Data Science: What helps avoid simple overfitting mistakes?", lowOptions(), 0),
+            mcq("[LOW] Data Science: Which metric choice should match business goal?", lowOptions(), 0),
+            mcq("[LOW] Data Science: Best way to begin reproducible experiments?", lowOptions(), 0),
+            written("[LOW] Data Science: Explain basic data-cleaning workflow for noisy data.", List.of("missing", "outlier", "clean", "validate")),
+            written("[LOW] Data Science: Describe simple feature engineering checks.", List.of("feature", "leakage", "scale", "encode")),
+
+            mcq("[MEDIUM] Data Science: Best approach for class imbalance issues?", mediumOptions(), 0),
+            mcq("[MEDIUM] Data Science: How should model comparison be executed fairly?", mediumOptions(), 0),
+            mcq("[MEDIUM] Data Science: Which workflow improves robust validation?", mediumOptions(), 0),
+            mcq("[MEDIUM] Data Science: What is strongest approach to monitor drift?", mediumOptions(), 0),
+            written("[MEDIUM] Data Science: Explain error-analysis process after failed production results.", List.of("slice", "error", "bias", "improve")),
+            written("[MEDIUM] Data Science: Describe an experiment plan for two model candidates.", List.of("baseline", "metric", "compare", "decision")),
+
+            mcq("[HIGH] Data Science: Best architecture for online model evaluation?", highOptions(), 0),
+            mcq("[HIGH] Data Science: Which strategy supports scalable training pipelines?", highOptions(), 0),
+            mcq("[HIGH] Data Science: Best governance approach for regulated ML systems?", highOptions(), 0),
+            written("[HIGH] Data Science: Describe feature-store design for multi-model teams.", List.of("feature", "version", "lineage", "serving")),
+            written("[HIGH] Data Science: Explain advanced monitoring and retraining policy.", List.of("drift", "threshold", "trigger", "retrain")),
+            written("[HIGH] Data Science: Provide production ML architecture with rollback strategy.", List.of("deployment", "canary", "rollback", "observability"))
+        );
+    }
+
+    private List<QuestionTemplate> cloudQuestionTemplates() {
+        return List.of(
+            mcq("[LOW] Cloud: Which action strengthens IAM basics first?", lowOptions(), 0),
+            mcq("[LOW] Cloud: Best first step for safe compute setup?", lowOptions(), 0),
+            mcq("[LOW] Cloud: Which storage choice depends on access pattern?", lowOptions(), 0),
+            mcq("[LOW] Cloud: What improves backup reliability quickly?", lowOptions(), 0),
+            mcq("[LOW] Cloud: Which monitoring signal is essential at start?", lowOptions(), 0),
+            mcq("[LOW] Cloud: What helps avoid basic cloud cost mistakes?", lowOptions(), 0),
+            written("[LOW] Cloud: Explain simple deployment checklist for backend release.", List.of("health", "config", "rollback", "verify")),
+            written("[LOW] Cloud: Describe network security group baseline for web services.", List.of("port", "allow", "deny", "least privilege")),
+
+            mcq("[MEDIUM] Cloud: Best practice for autoscaling policy definition?", mediumOptions(), 0),
+            mcq("[MEDIUM] Cloud: How should secrets be managed in CI/CD?", mediumOptions(), 0),
+            mcq("[MEDIUM] Cloud: Which strategy improves availability-zone resilience?", mediumOptions(), 0),
+            mcq("[MEDIUM] Cloud: What is strongest approach for incident response readiness?", mediumOptions(), 0),
+            written("[MEDIUM] Cloud: Explain container operations plan for reliable rollouts.", List.of("image", "health", "rollout", "monitor")),
+            written("[MEDIUM] Cloud: Describe cost optimization process with measurable controls.", List.of("tag", "budget", "rightsizing", "review")),
+
+            mcq("[HIGH] Cloud: Best design for multi-region disaster recovery?", highOptions(), 0),
+            mcq("[HIGH] Cloud: Which method supports policy-as-code governance at scale?", highOptions(), 0),
+            mcq("[HIGH] Cloud: What enables secure platform architecture for many teams?", highOptions(), 0),
+            written("[HIGH] Cloud: Describe SRE strategy for reliability objectives and incident control.", List.of("slo", "error budget", "alert", "postmortem")),
+            written("[HIGH] Cloud: Explain hybrid-cloud connectivity architecture decisions.", List.of("latency", "routing", "redundancy", "security")),
+            written("[HIGH] Cloud: Provide an end-to-end cloud governance framework.", List.of("policy", "audit", "compliance", "automation"))
+        );
+    }
+
+    private List<QuestionTemplate> webDevelopmentQuestionTemplates() {
+        return List.of(
+            mcq("[LOW] Web Development: Best first fix for broken form validation flow?", lowOptions(), 0),
+            mcq("[LOW] Web Development: Which approach improves semantic HTML quality?", lowOptions(), 0),
+            mcq("[LOW] Web Development: What helps prevent common JavaScript runtime issues?", lowOptions(), 0),
+            mcq("[LOW] Web Development: Which step improves API error handling for users?", lowOptions(), 0),
+            mcq("[LOW] Web Development: Best first action for routing-related page issues?", lowOptions(), 0),
+            mcq("[LOW] Web Development: Which strategy improves CSS maintainability early?", lowOptions(), 0),
+            written("[LOW] Web Development: Explain basic debugging workflow for a failing page.", List.of("console", "network", "error", "fix")),
+            written("[LOW] Web Development: Describe safe input handling for user-submitted forms.", List.of("sanitize", "validate", "feedback", "reject")),
+
+            mcq("[MEDIUM] Web Development: Best architecture for reusable UI components?", mediumOptions(), 0),
+            mcq("[MEDIUM] Web Development: Which approach improves frontend performance reliably?", mediumOptions(), 0),
+            mcq("[MEDIUM] Web Development: What is strongest API contract design practice?", mediumOptions(), 0),
+            mcq("[MEDIUM] Web Development: Which testing mix best reduces regressions?", mediumOptions(), 0),
+            written("[MEDIUM] Web Development: Explain authentication flow design for SPAs and APIs.", List.of("token", "refresh", "session", "secure")),
+            written("[MEDIUM] Web Development: Describe release checklist for zero-downtime updates.", List.of("build", "migrate", "health", "rollback")),
+
+            mcq("[HIGH] Web Development: Best strategy for high-load frontend/backend scaling?", highOptions(), 0),
+            mcq("[HIGH] Web Development: Which pattern improves distributed debugging efficiency?", highOptions(), 0),
+            mcq("[HIGH] Web Development: Best security architecture for multi-tenant web apps?", highOptions(), 0),
+            written("[HIGH] Web Development: Describe observability design for fullstack production systems.", List.of("trace", "metric", "log", "correlation")),
+            written("[HIGH] Web Development: Explain performance engineering plan for critical APIs.", List.of("latency", "throughput", "cache", "benchmark")),
+            written("[HIGH] Web Development: Provide resilience strategy for dependent external services.", List.of("timeout", "retry", "circuit", "fallback"))
+        );
+    }
+
+    private List<QuestionTemplate> networkingQuestionTemplates() {
+        return List.of(
+            mcq("[LOW] Networking: What is first step when connectivity is unstable?", lowOptions(), 0),
+            mcq("[LOW] Networking: Which check helps identify DNS misconfiguration quickly?", lowOptions(), 0),
+            mcq("[LOW] Networking: Best first action for subnet planning basics?", lowOptions(), 0),
+            mcq("[LOW] Networking: What improves secure Wi-Fi baseline immediately?", lowOptions(), 0),
+            mcq("[LOW] Networking: Which practice supports routing clarity for beginners?", lowOptions(), 0),
+            mcq("[LOW] Networking: What check helps diagnose high latency basics?", lowOptions(), 0),
+            written("[LOW] Networking: Explain a simple troubleshooting flow for packet loss.", List.of("interface", "error", "latency", "path")),
+            written("[LOW] Networking: Describe baseline firewall rules for student and admin traffic.", List.of("allow", "deny", "segment", "policy")),
+
+            mcq("[MEDIUM] Networking: Best strategy for VLAN segmentation design?", mediumOptions(), 0),
+            mcq("[MEDIUM] Networking: Which method improves traffic analysis decisions?", mediumOptions(), 0),
+            mcq("[MEDIUM] Networking: Best approach for redundancy in critical links?", mediumOptions(), 0),
+            mcq("[MEDIUM] Networking: Which practice improves VPN operational reliability?", mediumOptions(), 0),
+            written("[MEDIUM] Networking: Explain routing optimization process using measured data.", List.of("route", "metric", "latency", "optimize")),
+            written("[MEDIUM] Networking: Describe incident triage for intermittent network failures.", List.of("scope", "isolate", "evidence", "recover")),
+
+            mcq("[HIGH] Networking: Best architecture for hybrid connectivity at scale?", highOptions(), 0),
+            mcq("[HIGH] Networking: Which strategy supports zero-trust network posture?", highOptions(), 0),
+            mcq("[HIGH] Networking: Best method for capacity planning under growth?", highOptions(), 0),
+            written("[HIGH] Networking: Describe advanced diagnostics workflow for multi-site outages.", List.of("trace", "path", "root cause", "mitigation")),
+            written("[HIGH] Networking: Explain network automation approach for policy consistency.", List.of("automation", "template", "validation", "audit")),
+            written("[HIGH] Networking: Provide architecture plan for secure segmented enterprise traffic.", List.of("segment", "control", "monitor", "enforce"))
+        );
+    }
+
+    private List<QuestionTemplate> softwareEngineeringQuestionTemplates() {
+        return List.of(
+            mcq("[LOW] Software Engineering: Best first step to clarify requirements?", lowOptions(), 0),
+            mcq("[LOW] Software Engineering: Which habit improves code readability fastest?", lowOptions(), 0),
+            mcq("[LOW] Software Engineering: What helps reduce simple bugs before release?", lowOptions(), 0),
+            mcq("[LOW] Software Engineering: Which practice improves commit quality?", lowOptions(), 0),
+            mcq("[LOW] Software Engineering: How should basic errors be communicated to users?", lowOptions(), 0),
+            mcq("[LOW] Software Engineering: Which step makes debugging more systematic?", lowOptions(), 0),
+            written("[LOW] Software Engineering: Explain a small feature delivery workflow.", List.of("task", "code", "test", "review")),
+            written("[LOW] Software Engineering: Describe basic validation and error-handling approach.", List.of("input", "validate", "error", "message")),
+
+            mcq("[MEDIUM] Software Engineering: Best modular architecture approach for maintainability?", mediumOptions(), 0),
+            mcq("[MEDIUM] Software Engineering: Which testing strategy best protects critical flows?", mediumOptions(), 0),
+            mcq("[MEDIUM] Software Engineering: What is strongest release management practice?", mediumOptions(), 0),
+            mcq("[MEDIUM] Software Engineering: Which approach controls technical debt over time?", mediumOptions(), 0),
+            written("[MEDIUM] Software Engineering: Explain observability setup for service reliability.", List.of("metric", "alert", "log", "trace")),
+            written("[MEDIUM] Software Engineering: Describe code review checklist for quality and security.", List.of("readability", "test", "risk", "security")),
+
+            mcq("[HIGH] Software Engineering: Best architecture decision for large-scale systems?", highOptions(), 0),
+            mcq("[HIGH] Software Engineering: Which pattern improves resilience under dependency failures?", highOptions(), 0),
+            mcq("[HIGH] Software Engineering: Best strategy for performance engineering at scale?", highOptions(), 0),
+            written("[HIGH] Software Engineering: Describe end-to-end system design with tradeoffs.", List.of("architecture", "tradeoff", "scale", "reliability")),
+            written("[HIGH] Software Engineering: Explain security-by-design across SDLC phases.", List.of("threat", "control", "review", "verify")),
+            written("[HIGH] Software Engineering: Provide operational excellence roadmap for a mature platform.", List.of("slo", "incident", "automation", "improvement"))
+        );
+    }
+
+    private List<String> lowOptions() {
+        return List.of(
+            "Use clear fundamentals, validate each step, and confirm outcome",
+            "Skip foundational checks and guess quickly",
+            "Ignore user impact and proceed without review",
+            "Delay all validation until production"
+        );
+    }
+
+    private List<String> mediumOptions() {
+        return List.of(
+            "Use structured design, testing, and iterative improvement",
+            "Depend only on intuition without metrics",
+            "Skip review to save time",
+            "Avoid documenting decisions"
+        );
+    }
+
+    private List<String> highOptions() {
+        return List.of(
+            "Apply architecture-level controls, observability, and continuous verification",
+            "Use one fixed pattern regardless of context",
+            "Prioritize speed over reliability and security",
+            "Disable monitoring to reduce overhead"
         );
     }
 
@@ -1085,6 +1391,19 @@ public class SkillVerificationService {
         return value == null ? "" : value.trim();
     }
 
+    private String certificateSignalText(CertificateEntryRequest cert) {
+        String certificateContent = safe(cert.getCertificateContent());
+        if (!certificateContent.isEmpty()) {
+            return (safe(cert.getTitle()) + " " + certificateContent).trim();
+        }
+
+        return String.join(" ",
+            safe(cert.getTitle()),
+            safe(cert.getDescription()),
+            safe(cert.getProvider())
+        ).trim();
+    }
+
     private record Question(
         String questionId,
         String skillArea,
@@ -1104,6 +1423,18 @@ public class SkillVerificationService {
         List<String> options,
         int correctOptionIndex,
         List<String> expectedKeywords
+    ) {
+    }
+
+    private record LeveledQuestionTemplate(
+        QuestionTemplate template,
+        SkillLevel level
+    ) {
+    }
+
+    private record CertificateAnalysisComputation(
+        CertificateAnalysisResponse response,
+        List<CertificateClaimEntity> entitiesToSave
     ) {
     }
 }
